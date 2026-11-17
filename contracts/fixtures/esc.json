@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "sequences": [
+    { "from": "TOOL", "steps": ["A4", "A1", "HIDDEN"] },
+    { "from": "TOOLPAGE", "steps": ["A1", "HIDDEN"] }
+  ]
+}

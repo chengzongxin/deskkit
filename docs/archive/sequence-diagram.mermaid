@@ -1,0 +1,51 @@
+%% DeskKit 主流程时序图：热键呼出 → 搜索 → 结果 → 执行
+%% 来源：docs/02-Architecture.md §6.1 ｜ 撰写：高见远（架构师）｜ v1.0
+%% 关键：全局热键由 Rust Core 直接注册（不经 WebView）；本地结果先出，插件结果异步合流
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant HS as HotkeyService（Rust Core）
+    participant PA as PlatformAdapter
+    participant LW as 主启动器 A（预热挂起 WebView）
+    participant SS as SearchService（Rust Core）
+    participant IS as IndexService（mmap 倒排 + 拼音 trie）
+    participant CB as ClipboardService / ContextMatcher
+    participant PH as PluginHost（异步合流）
+    participant EX as CapabilityExecutor
+
+    Note over HS,LW: 冷启动：Core 已预热一个挂起 WebView；热键由 Core 直接注册（不经 WebView）
+    U->>HS: 按下 Alt+Space / ⌥+Space
+    HS->>PA: detect_hotkey_conflict + 定位多屏（跟随鼠标屏）
+    HS->>LW: 唤醒/attach 浮层并聚焦输入框（P95 <100ms；冷启首帧 <300ms）
+    LW-->>U: A1 默认态：最近使用 6 条 + 推荐工具
+    CB->>LW: 检测到剪贴板新内容 → 顶部插入「剪贴板匹配」推荐卡
+    LW-->>U: 显示上下文推荐（翻译 / 剪贴板 / 二维码）
+
+    U->>LW: 输入 "fy hello" / "wx" / "520+999"
+    LW->>SS: search(SearchQuery{raw, trigger, deadlineMs=100})
+    SS->>IS: 中文 / 全拼 / 首字母 / 英文 匹配（万级索引 <30ms）
+    IS-->>SS: IndexItem[]（按 应用/文件/网址 分组）
+    SS->>SS: 算式直算 + 内置工具命中（计算器 / 时间 / 颜色）
+    SS->>CB: 剪贴板 / 选区上下文匹配
+    CB-->>SS: 推荐工具集合
+    SS->>PH: 并行 invoke 命中插件（onQuery / onTrigger，各自 deadline）
+    SS-->>LW: 本地结果先出（<100ms），首行选中，匹配片段高亮
+    PH-->>LW: 插件结果异步合流（独立 loading 态；超时则该分组丢弃，不影响主结果）
+    LW-->>U: A3 结果态：分组标题 + 选中强调条 + 序号 1–9
+
+    U->>LW: ↑↓ 选择 + Enter
+    alt 启动类（应用 / 文件 / 网址）
+        LW->>EX: open / revealInFolder / copyPath（经 PA）
+        EX->>PA: opener / fs
+    else 工具类（计算 / 翻译 / 取色 / 转换）
+        LW->>SS: 求值或进入工具内页
+        SS-->>LW: 结果（译文 / 数值 / 色值）
+        LW->>EX: 写入剪贴板（clipboard.write）
+        LW-->>U: Enter 复制结果
+    else 插件类（首次需授权）
+        LW->>PH: invoke(pluginId, method, ctx)
+        PH->>EX: 经 PermissionBroker 校验后代执行（见 6.2）
+        EX-->>LW: 渲染插件结果
+    end
+    LW->>PA: 失焦判定 → 150ms 内隐藏（模态弹层时不隐藏）
+    LW-->>U: 回到原应用，手不离键盘

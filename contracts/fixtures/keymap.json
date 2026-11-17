@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "platform": "windows", "action": "summon", "display": "Alt+Space" },
+    { "platform": "macos", "action": "summon", "display": "⌥+Space" },
+    { "platform": "macos", "action": "tools", "display": "⌘+T" },
+    { "platform": "windows", "action": "settings", "display": "Ctrl+," }
+  ]
+}

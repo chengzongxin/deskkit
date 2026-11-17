@@ -1,0 +1,40 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "platforms": {
+    "windows": [
+      {
+        "id": "autostart",
+        "title": "开机自启",
+        "reason": "登录后驻留在托盘，才能随时用热键呼出。"
+      },
+      {
+        "id": "fileIndex",
+        "title": "文件索引",
+        "reason": "用来查找开始菜单、桌面和已安装的应用。"
+      }
+    ],
+    "macos": [
+      {
+        "id": "accessibility",
+        "title": "辅助功能",
+        "reason": "用来注册全局呼出热键。未授权时不会假装已经注册成功。"
+      },
+      {
+        "id": "inputMonitoring",
+        "title": "输入监控",
+        "reason": "备用键盘监听需要这项权限。未授权时给出单独引导。"
+      },
+      {
+        "id": "screenRecording",
+        "title": "屏幕录制",
+        "reason": "截图取色需要读取屏幕像素。未授权时不返回空图。"
+      },
+      {
+        "id": "fullDiskAccess",
+        "title": "完全磁盘访问",
+        "reason": "没有这项权限时，只索引能读到的目录，并说明有遗漏。"
+      }
+    ]
+  }
+}

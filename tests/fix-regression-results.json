@@ -1,0 +1,298 @@
+{
+  "total": 36,
+  "pass": 36,
+  "fail": 0,
+  "rate": "100.0",
+  "browser": true,
+  "sourceMd5": "1fc47e74727696c2fa21a9c7a104d293",
+  "results": [
+    {
+      "id": "R01",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": "运行时权限网关 8 个函数与常量齐备",
+      "expected": "guard / guardCapability / guardPeek / guardCapabilityPeek / denyFeedback / denyIfBlocked / permForCapability / CAPABILITY_PERMS 均存在",
+      "actual": "8/8 存在",
+      "pass": true
+    },
+    {
+      "id": "R02",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": "三条执行链均接入网关（静态调用点）",
+      "expected": "搜索结果 / 触发词视图 / 工具内页 各有 >=1 处网关调用",
+      "actual": "9/9 条调用链均有网关",
+      "pass": true
+    },
+    {
+      "id": "R03",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": "零网络 / 单文件约束未回归",
+      "expected": "link / script src / http(s) / fetch / XHR / @import / url( 全为 0",
+      "actual": "0 命中",
+      "pass": true
+    },
+    {
+      "id": "R04",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": ":root 之外无硬编码色值；--chip-group-4 落在 :root 内且被 --chip-4 引用",
+      "expected": "硬编码 0 处；token 值 #9B6CF6",
+      "actual": ":root 外 0 处；--chip-group-4=#9B6CF6，--chip-4=var(--chip-group-4)",
+      "pass": true
+    },
+    {
+      "id": "R05",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": "HIDDEN → TOOLPAGE 为合法迁移（OBS-04）",
+      "expected": "TRANSITIONS.HIDDEN 含 TOOLPAGE",
+      "actual": "HIDDEN:[A1, TOOLPAGE]",
+      "pass": true
+    },
+    {
+      "id": "R06",
+      "group": "R1 静态 / 网关结构 / 零回归",
+      "name": "修复后内嵌脚本 node --check 语法通过",
+      "expected": "PASS",
+      "actual": "node --check OK",
+      "pass": true
+    },
+    {
+      "id": "R07",
+      "group": "R2 DEF-02 Toast 类型样式（计算样式级）",
+      "name": "Toast ok 命中独立 kind 类且圆点计算色 = var(--success)",
+      "expected": "class 含独立 ok；圆点色 = 该语义色",
+      "actual": "toast ok | rgb(24, 160, 88) = #18A058",
+      "pass": true
+    },
+    {
+      "id": "R08",
+      "group": "R2 DEF-02 Toast 类型样式（计算样式级）",
+      "name": "Toast warn 命中独立 kind 类且圆点计算色 = var(--warning)",
+      "expected": "class 含独立 warn；圆点色 = 该语义色",
+      "actual": "toast warn | rgb(240, 160, 32) = #F0A020",
+      "pass": true
+    },
+    {
+      "id": "R09",
+      "group": "R2 DEF-02 Toast 类型样式（计算样式级）",
+      "name": "Toast err 命中独立 kind 类且圆点计算色 = var(--danger)",
+      "expected": "class 含独立 err；圆点色 = 该语义色",
+      "actual": "toast err | rgb(229, 72, 77) = #E5484D",
+      "pass": true
+    },
+    {
+      "id": "R10",
+      "group": "R2 DEF-02 Toast 类型样式（计算样式级）",
+      "name": "无 kind 的 Toast 使用默认强调色且不产生 toast- 前缀",
+      "expected": "class=toast；圆点=var(--accent)",
+      "actual": "toast | rgb(59, 108, 246) | --accent=#3B6CF6",
+      "pass": true
+    },
+    {
+      "id": "R11",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "CAPABILITY_PERMS 六项映射齐全，含 screenshot→screen.capture 别名",
+      "expected": "6/6 映射正确",
+      "actual": "{\"translate\":\"net.fetch\",\"ocr\":\"clipboard.read\",\"clipboard\":\"clipboard.read\",\"picker\":\"screen.capture\",\"screenshot\":\"screen.capture\",\"qr\":\"clipboard.write\"}",
+      "pass": true
+    },
+    {
+      "id": "R12",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "撤销 net.fetch 后 guard / guardPeek 同时拒绝，且渲染期不弹 Toast",
+      "expected": "guard=false, guardPeek=false, 无拒绝 Toast",
+      "actual": "guard=false / guardPeek=false / 撤销 Toast 仅 1 条(warn)，拒绝 Toast 0",
+      "pass": true
+    },
+    {
+      "id": "R13",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "撤销后执行插件结果被拦截，给出统一 denyFeedback 且指路「恢复」",
+      "expected": "不出现「已唤起插件」；含「能力已拦截」「恢复」",
+      "actual": "权限已撤销 / 未授权：「网络访问」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R14",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "restorePerm 恢复后同一执行链放行",
+      "expected": "Toast 为「已唤起插件」",
+      "actual": "guard=true / 已唤起插件 聚合翻译（模拟执行）",
+      "pass": true
+    },
+    {
+      "id": "R15",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "拒绝授权（deny）与撤销共用 p.revoked，执行被同一网关拦截",
+      "expected": "revoked 全量；执行被拦截",
+      "actual": "revoked=[\"clipboard.write\"] / 权限已撤销 / 未授权：「剪贴板写入」受限（二维码生成），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R16",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "「仅本次」授权：首次执行放行并消耗 grant，二次执行被拦截",
+      "expected": "第 1 次 ok / 第 2 次拦截；grants 用过即删",
+      "actual": "第1次=已唤起插件 聚合翻译（模拟执行） / 第2次=权限已撤销 / 未授权：「剪贴板读取」受限（聚合翻译），能力已拦截；需重新申请（ / grants 2→0",
+      "pass": true
+    },
+    {
+      "id": "R17",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "渲染期 guardPeek 不消耗「仅本次」授权（重复 renderAll 不提前用掉）",
+      "expected": "3 次 renderAll 后 grant 仍在且仍可放行一次",
+      "actual": "renderAll×3 后 grant=once / 执行放行 / 执行后 grant 清空",
+      "pass": true
+    },
+    {
+      "id": "R18",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "撤销权限立即作废在飞的一次性授权",
+      "expected": "revokePerm 后 grant 删除，执行被拦截",
+      "actual": "grant=null / 权限已撤销 / 未授权：「网络访问」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R19",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "未安装 / 未启用插件不参与拦截（网关不误伤）",
+      "expected": "guard 返回 true",
+      "actual": "uninstalled=true / disabled=true（仅对已装已启用且声明该权限的插件生效）",
+      "pass": true
+    },
+    {
+      "id": "R20",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "screenshot 别名同样受网关约束（screen.capture）",
+      "expected": "permForCapability(screenshot)=screen.capture；撤销后 picker/screenshot 能力被拦",
+      "actual": "alias=screen.capture / picker=false / screenshot=false / owners=[\"ocr\"]",
+      "pass": true
+    },
+    {
+      "id": "R21",
+      "group": "R3 DEF-01 运行时权限网关 / 授权语义",
+      "name": "诊断：单项拒绝是否连带拦截插件通用入口，主能力是否仍可用",
+      "expected": "记录实际行为（用于判断越权拦截范围）",
+      "actual": "仅撤销 clipboard.read → 通用入口：被连带拦截；主能力 translate=true；触发词输出=翻译中…",
+      "pass": true
+    },
+    {
+      "id": "R22",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链①搜索结果：executeResult case plugin 拦截（已在 R13 验证）",
+      "expected": "一致",
+      "actual": "搜索结果链：拦截生效",
+      "pass": true
+    },
+    {
+      "id": "R23",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链②触发词视图：fy 翻译输出降级文案，且不弹重复 Toast",
+      "expected": "trig-out / tr-output = 「权限已撤销，需重新申请」",
+      "actual": "trig-out / tr-output（即时+延时）均为降级文案，渲染期无重复 Toast",
+      "pass": true
+    },
+    {
+      "id": "R24",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链②触发词视图：trig-copy（复制译文）被 denyIfBlocked 拦截",
+      "expected": "triggerCopyValue 返回空且给出 err Toast",
+      "actual": "返回 \"\" / 权限已撤销 / 未授权：「网络访问」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R25",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链②触发词视图：trig-clip（剪贴板能力）被拦截",
+      "expected": "handleAct trig-clip 产生拦截 Toast",
+      "actual": "权限已撤销 / 未授权：「剪贴板读取」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R26",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链③工具内页：copyToolResult（翻译/取色）被拦截",
+      "expected": "不复制、给出 err Toast",
+      "actual": "translate / picker 两个内页复制均被拦截",
+      "pass": true
+    },
+    {
+      "id": "R27",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链③工具内页：tool-clip-copy 被拦截",
+      "expected": "handleAct tool-clip-copy 产生拦截 Toast",
+      "actual": "权限已撤销 / 未授权：「剪贴板读取」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true
+    },
+    {
+      "id": "R28",
+      "group": "R4 三条执行链拦截覆盖",
+      "name": "链③工具内页：onPickHover 取色受 screen.capture 网关约束",
+      "expected": "撤销后 pickedHex 不变",
+      "actual": "未撤销→#3B6CF6 / 撤销后→#000000（取色被拦截）",
+      "pass": true
+    },
+    {
+      "id": "R29",
+      "group": "R5 OBS-01~04 修复落地",
+      "name": "OBS-01：--chip-group-4 计算色 = rgb(155, 108, 246)",
+      "expected": "#9B6CF6",
+      "actual": "rgb(155, 108, 246)",
+      "pass": true
+    },
+    {
+      "id": "R30",
+      "group": "R5 OBS-01~04 修复落地",
+      "name": "OBS-02：C 宫格 .tool-cell = 112×96，9 格，420×360 外框无溢出",
+      "expected": "112/96 / 9 格 / scroll<=client",
+      "actual": "9 格 × 112px×96px / 外框 420pxx360px / head=30px foot=22px / 无溢出",
+      "pass": true
+    },
+    {
+      "id": "R31",
+      "group": "R5 OBS-01~04 修复落地",
+      "name": "OBS-03：卸载同步清理 trigger / pinList / hotkeys / grants / revoked / pinned",
+      "expected": "6 项全清",
+      "actual": "trigger/revoked/pinned/triggers/pinList/hotkeys/grants/installed/enabled 9 项全清",
+      "pass": true
+    },
+    {
+      "id": "R32",
+      "group": "R5 OBS-01~04 修复落地",
+      "name": "OBS-04：HIDDEN → TOOLPAGE 不产生 forced 非法迁移",
+      "expected": "forced=0",
+      "actual": "HIDDEN→TOOLPAGE / forced=0（HIDDEN→TOOLPAGE）",
+      "pass": true
+    },
+    {
+      "id": "R33",
+      "group": "R6 全局回归 / 双端同期",
+      "name": "安装全链路（详情→授权「仅本次」→下载→完成）grants 正确写入且持久状态受限",
+      "expected": "installed=true / revoked=全量 / grants=once",
+      "actual": "revoked=[\"clipboard.write\"] / grants=[\"qrtool|clipboard.write\"]",
+      "pass": true
+    },
+    {
+      "id": "R34",
+      "group": "R6 全局回归 / 双端同期",
+      "name": "Esc 逐级回退两条链未回归",
+      "expected": "TRIGGER→A4→A1→HIDDEN；TOOLPAGE→A1→HIDDEN",
+      "actual": "链① TRIGGER→A4→A1→HIDDEN / 链② TOOLPAGE→A1→HIDDEN→HIDDEN→HIDDEN",
+      "pass": true
+    },
+    {
+      "id": "R35",
+      "group": "R6 全局回归 / 双端同期",
+      "name": "双端同期：19 个界面状态 win/mac 结构 + 归一化文案白名单外差异 0",
+      "expected": "19/19 通过",
+      "actual": "19 个状态，白名单外差异 0",
+      "pass": true
+    },
+    {
+      "id": "R36",
+      "group": "R6 全局回归 / 双端同期",
+      "name": "全流程零未捕获异常 / 零外部请求",
+      "expected": "0 / 0",
+      "actual": "异常 0 / 外部请求 0",
+      "pass": true
+    }
+  ]
+}

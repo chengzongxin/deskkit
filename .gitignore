@@ -1,0 +1,26 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+
+# Swift Package Manager / Xcode
+.build/
+DerivedData/
+*.dSYM/
+*.swiftmodule/
+*.swiftdoc/
+*.swiftsourceinfo
+xcuserdata/
+*.xcuserstate
+
+# macOS 打包产物
+apps/macos/build/
+
+# IDE
+.vs/
+.idea/
+
+# 日志
+*.log
+apps/windows/**/logs/

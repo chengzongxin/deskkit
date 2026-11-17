@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "word": "fy", "toolId": "translate" },
+    { "word": "js", "toolId": "calc" },
+    { "word": "color", "toolId": "color" },
+    { "word": "ts", "toolId": "timestamp" },
+    { "word": "clip", "toolId": "clipboard" }
+  ],
+  "absent": ["ocr"]
+}

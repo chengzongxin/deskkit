@@ -1,0 +1,11 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "triggers": [
+    { "word": "fy", "toolId": "translate", "label": "翻译", "placeholder": "输入待译文本，Enter 复制译文" },
+    { "word": "js", "toolId": "calc", "label": "计算器", "placeholder": "输入算式或 100cny to usd" },
+    { "word": "color", "toolId": "color", "label": "颜色转换", "placeholder": "输入 #3B6CF6 / RGB / HSL" },
+    { "word": "ts", "toolId": "timestamp", "label": "时间戳", "placeholder": "输入时间戳或日期" },
+    { "word": "clip", "toolId": "clipboard", "label": "剪贴板历史", "placeholder": "输入关键词筛选剪贴板记录" }
+  ]
+}

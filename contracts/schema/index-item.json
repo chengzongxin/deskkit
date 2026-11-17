@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "title": "IndexItem",
+  "type": "object",
+  "required": ["id", "kind", "title", "keywords"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["app", "file", "url", "tool"] },
+    "title": { "type": "string" },
+    "path": { "type": "string" },
+    "iconRef": { "type": "string" },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "score": { "type": "number" }
+  },
+  "additionalProperties": false
+}

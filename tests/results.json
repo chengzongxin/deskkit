@@ -1,0 +1,775 @@
+{
+  "total": 85,
+  "pass": 85,
+  "fail": 0,
+  "rate": "100.0",
+  "browser": true,
+  "browserNote": "",
+  "results": [
+    {
+      "id": "S01",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "单文件：无 <link> / <script src> / <iframe src>",
+      "expected": "均为 0",
+      "actual": "0 处",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S02",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "零网络：无 http(s):// 字面量",
+      "expected": "0 处",
+      "actual": "0 处",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S03",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "零网络 API：无 fetch( / XMLHttpRequest / WebSocket / EventSource / importScripts",
+      "expected": "0 处",
+      "actual": "0 处",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S04",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "CSS 无 @import / url( 外部资源",
+      "expected": "0 处",
+      "actual": "0 处",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S05",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": ":root 之外无硬编码 hex / rgb()/rgba()",
+      "expected": "0 处",
+      "actual": "0 处",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S06",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "PRD 5.7 的 24 个尺寸 token 齐全且值精确",
+      "expected": "24/24 匹配",
+      "actual": "24/24 匹配",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S07",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "PRD 5.8 的 15 个语义色值 + 4 个状态色齐全且精确",
+      "expected": "19/19 匹配",
+      "actual": "19/19 匹配",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S08",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "分组 5 色均引用语义变量（无散落 hex）",
+      "expected": "5 色均 var()",
+      "actual": "var(--accent) / var(--success) / var(--warning) / var(--chip-group-4) / var(--danger)",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S09",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "内嵌脚本 node --check 语法通过",
+      "expected": "退出码 0",
+      "actual": "node --check OK",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S10",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "data-act 全覆盖：每个字面值都有事件分发分支",
+      "expected": "0 个死按钮",
+      "actual": "103 个字面值 / 109 个 case，未覆盖 0",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S11",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "显式状态机 7 态 + Esc 回退栈存在",
+      "expected": "TRANSITIONS 7 态 / rebuildEscStack+escBack",
+      "actual": "7 态迁移表 + 回退栈齐备",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S12",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "静态：平台等值分支仅落在白名单函数集合内",
+      "expected": "越界 0 处",
+      "actual": "defaultHotkey,backupHotkey,t,renderF,onRecordKey,onRecordKey,onRecordKey（7 处，全部白名单内）",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "S13",
+      "group": "G1 结构 / 离线 / Token / 语法",
+      "name": "静态：render* / openModal 文案中无平台权限名硬编码",
+      "expected": "0 处",
+      "actual": "平台权限名仅存在于 PLATFORM_PERMS 常量",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V01",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "file:// 加载成功，store 初始化为 A1 且脚本执行",
+      "expected": "state='A1' / view='A'",
+      "actual": "{\"view\":\"A\",\"state\":\"A1\",\"visible\":true,\"platform\":\"win\",\"menu\":false,\"modal\":false,\"toolmode\":\"grid\",\"activeTool\":null,\"raw\":\"\",\"trigger\":\"\",\"payload\":\"\",\"flat\":0,\"sel\":0,\"historyForced\":0}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V02",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "页面无未捕获 JS 异常 / 控制台 error",
+      "expected": "0 条",
+      "actual": "0 条",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V03",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "浏览器实际发出的请求只有主文档（零外部请求）",
+      "expected": "0 个外部请求",
+      "actual": "主文档 file:// + 0 个外部请求",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V04",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "六套界面逐一可打开、可返回 A，且同一时刻仅一套可见",
+      "expected": "A–F 全通过",
+      "actual": "A=view-a | B=view-b | C=view-c | D=view-d | E=view-e | F=view-f",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V05",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "A1/A2/A3/A4 四态互斥且状态机 state 正确",
+      "expected": "A1/A2/A3/A4",
+      "actual": "A1 / A2 / A3 / A4",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V06",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "触发词态 TRIGGER 与工具内页态 TOOLPAGE 可触发且互斥",
+      "expected": "TRIGGER / TOOLPAGE 且各只占一态",
+      "actual": "TRIGGER(胶囊+独占视图) / TOOLPAGE(view-c.page)",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "V07",
+      "group": "G2 真实浏览器渲染 / 零网络请求",
+      "name": "A4 空态三个出口按钮可见可点且各有效",
+      "expected": "3 个出口均响应",
+      "actual": "empty-browser / empty-market / clear 均有效",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K01",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "默认呼出键 Alt+Space / ⌥+Space 被 preventDefault（不产生空格/NBSP）",
+      "expected": "三组组合键均 defaultPrevented=true",
+      "actual": "true,true,true",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K02",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "真实键盘 Alt+Space：切换呼出/隐藏且不向输入框插入空格",
+      "expected": "可见性翻转 + 探针值保持 XYZ",
+      "actual": "toggle OK / probe=XYZ",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K03",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "mac ⌥+Space（NBSP 字符）不产生 NBSP 副作用",
+      "expected": "探针值仍为 XYZ",
+      "actual": "NBSP 被拦截",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K04",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "备用呼出键 Ctrl/⌘+Shift+Space 可呼出并 preventDefault",
+      "expected": "toggle 生效且阻止默认",
+      "actual": "Ctrl+Shift+Space OK",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K05",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "↑↓ 与 Ctrl/⌘+N/P 移动选中且到边界停住",
+      "expected": "selected 0→1→0",
+      "actual": "1→0→1→0",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K06",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Enter 执行选中项并给出 Toast 反馈；Shift+Enter 执行副操作",
+      "expected": "两次均出现 Toast",
+      "actual": "Enter / Shift+Enter 均有 Toast",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K07",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Tab 补全触发词 / 结果标题 / 切换 A↔C",
+      "expected": "fy 补全进入 TRIGGER",
+      "actual": "Tab(f)→TRIGGER(fy)",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K08",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Ctrl/⌘+K 操作菜单、Ctrl/⌘+, 设置页、Ctrl/⌘+T 工具宫格、Ctrl/⌘+Shift+V 剪贴板",
+      "expected": "4 条快捷键均响应",
+      "actual": "K / , / T / Shift+V 全部响应",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K09",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "数字键 1–9 直达结果 / 宫格工具",
+      "expected": "Digit1 与 Digit4 生效",
+      "actual": "Digit1→执行 / Digit4→计算器",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K10",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "F1 与 ? 打开快捷键速查；? 在输入框内不抢占且可正常输入",
+      "expected": "F1/弹窗 + 输入框保留 ?",
+      "actual": "F1/? 打开；输入框内 ? 不抢占",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K11",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "普通字符输入不被全局快捷键劫持（含 t / ? / 空格 / 数字）",
+      "expected": "输入值完整且视图不变",
+      "actual": "输入值=t1 wd",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K12",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Esc 逐级回退链①：TRIGGER → A4 → A1 → HIDDEN",
+      "expected": "4 级依次，不跳级",
+      "actual": "TRIGGER → A4 → A1 → HIDDEN",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K13",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Esc 逐级回退链②：TOOLPAGE → A1 → HIDDEN",
+      "expected": "3 级依次，禁止一键隐藏",
+      "actual": "TOOLPAGE → A1 → HIDDEN",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K14",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "Esc 栈为空（HIDDEN）时再按 Esc 不崩溃；快速连按呼出键状态稳定",
+      "expected": "无异常 / 状态确定",
+      "actual": "HIDDEN 稳定，无异常",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "K15",
+      "group": "G3 键盘流 / 呼出 / Esc 逐级回退",
+      "name": "状态机无非法迁移（forced 标记仅由窗口导航产生）",
+      "expected": "正常键盘流 forced=0",
+      "actual": "forced=0（记录值，架构 §4.4.1 A4 基线）",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q01",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "拼音/首字母/英文命中：wx→微信 kzmb→控制面板 word→Word fy→翻译",
+      "expected": "4 项均命中",
+      "actual": "wx→微信 | kzmb→控制面板 | word→Word | fy→翻译/聚合翻译",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q02",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "算式 123*4 产生计算结果行 = 492",
+      "expected": "结果行含 492",
+      "actual": "= 492 / copy=492",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q03",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "六个触发词 fy/js/color/ts/clip/ocr 均胶囊化并切到独占视图",
+      "expected": "6/6 TRIGGER + 胶囊",
+      "actual": "fy / js / color / ts / clip / ocr 全部通过",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q04",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "无匹配进入 A4，三个出口可点且文案完整",
+      "expected": "空态 + 3 出口",
+      "actual": "A4 文案 + 3 出口",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q05",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "匹配字符高亮 <mark> 且首行选中",
+      "expected": "mark 存在、A3 有 .sel",
+      "actual": "mark + .sel 均在",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q06",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "边界：空输入、超长输入(>500 字符) 均不崩溃且渲染正常",
+      "expected": "A1 / A4 正常",
+      "actual": "空输入→A1 / 620 字符→A4，无异常",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q07",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "XSS 注入：<script>/<img onerror>/&/引号 被转义，无元素注入、无脚本执行",
+      "expected": "0 个注入元素",
+      "actual": "4 组 payload 均被 esc() 转义，__xss=0",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "Q08",
+      "group": "G4 搜索 / 拼音 / 触发词 / 错误输入",
+      "name": "边界：连续切换平台与视图 24 次无异常",
+      "expected": "0 异常",
+      "actual": "24 次切换无异常",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T01",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "计算器 123*4 = 492；(1+2)*3 = 9",
+      "expected": "492 / 9",
+      "actual": "492 / 9 / 492 / 9",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T02",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "除零有防护、非法表达式不崩溃",
+      "expected": "evalExpression 返回 null，无抛错",
+      "actual": "除零→null/—，非法式→null/「表达式非法」，不崩溃",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T03",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "单位换算 1km = 1000m；100cny to usd 走换算分支",
+      "expected": "1000 / 含 USD",
+      "actual": "1km→1000 M / 14.044944 USD",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T04",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "颜色 #3B6CF6 → rgb(59,108,246)，HEX↔RGB 精确往返",
+      "expected": "精确一致",
+      "actual": "{\"r\":59,\"g\":108,\"b\":246} / #3B6CF6",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T05",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "HEX→HSL→RGB 往返一致（容差 ±2/通道）",
+      "expected": "最大通道误差 ≤2",
+      "actual": "maxDiff=2 / #3B6CF6→#3C6EF6 #18A058→#18A057 #F0A020→#EF9F1F #FFFFFF→#FFFFFF #000000→#000000 #808080→#808080",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T06",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "颜色工具内页三栏 DOM 联动显示 rgb(59, 108, 246)",
+      "expected": "三栏均有值",
+      "actual": "#3B6CF6 | rgb(59, 108, 246) | hsl(224, 91%, 60%)",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T07",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "时间戳 10 位 / 13 位 ↔ 日期双向正确",
+      "expected": "getTime 精确、日期回解一致",
+      "actual": "10/13 位→1730000000000 / 日期往返 2024-10-27 11:33:20",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T08",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "翻译内置词典 hello world 命中",
+      "expected": "你好，世界",
+      "actual": "你好，世界 | 你好 | 「notindict」· 离线基础词库暂未收录，可复制原文",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T09",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "工具内页 UI：计算器 123*4 / 单位 1km→m / 时间戳双向",
+      "expected": "三处 UI 结果正确",
+      "actual": "492 / 1000 M / 2024-10-27 11:33:20",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "T10",
+      "group": "G5 工具内页算法（独立断言）",
+      "name": "触发词 js / color / ts 的结果计算独立正确",
+      "expected": "492 / rgb / 日期",
+      "actual": "492 | #3B6CF6 | 2024-10-27 11:33:20 | 你好，世界",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P01",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "详情 → 权限清单可见（含用途说明）",
+      "expected": "弹窗含权限项",
+      "actual": "详情+权限清单+更新日志",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P02",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "安装 → 授权弹窗含 允许 / 拒绝 / 仅本次 三要素",
+      "expected": "3 个决策按钮 + 权限用途",
+      "actual": "auth-deny/auth-once/auth-allow",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P03",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "允许 → 下载校验 4 步日志 → 安装完成弹窗询问固定/触发词",
+      "expected": "日志 4 步 + 完成弹窗",
+      "actual": "完成弹窗 + 固定/触发词询问",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P04",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "完成 → installed/enabled/pinned 且触发词注册（冲突检测）",
+      "expected": "状态正确 + trigger 生效",
+      "actual": "{\"installed\":true,\"enabled\":true,\"pinned\":true,\"trigger\":\"qr\",\"has\":true}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P05",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "拒绝授权 → 插件其他功能仍可用（已装/已启用），受限权限记入 revoked",
+      "expected": "installed=true / revoked 全量",
+      "actual": "{\"installed\":true,\"enabled\":true,\"revoked\":[\"screen.capture\",\"clipboard.write\"],\"decision\":\"deny\"}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P06",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "仅本次授权 → decision=once 且弹窗可继续",
+      "expected": "decision=once",
+      "actual": "decision=once",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P07",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "撤销权限 → 立即写入 revoked 且权限总览 UI 显示「已撤销」",
+      "expected": "revoked 含该权限 + UI 文案",
+      "actual": "{\"revoked\":[\"net.fetch\"]}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P08",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "撤销后立即生效：再次调用受限能力应被拦截（权限网关）",
+      "expected": "应给出拒绝/需重新申请的拦截反馈，而非正常执行",
+      "actual": "拦截反馈：权限已撤销 / 未授权：「网络访问」受限（聚合翻译），能力已拦截；需重新申请（设置 → 插件 → 权限总览 点「恢复」）",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P09",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "禁用插件 → 不再出现在搜索结果与上下文匹配",
+      "expected": "搜索命中 0 条",
+      "actual": "{\"enabled\":false,\"hits\":0}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P10",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "卸载二次确认 + 清理触发词/固定项/启用态",
+      "expected": "确认弹窗 + 清理完成",
+      "actual": "二次确认 + 触发词/固定项已清理",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "P11",
+      "group": "G6 插件生命周期 / 权限 / 安装卸载",
+      "name": "卸载后搜索不再命中该插件；重复安装同一插件不产生重复条目",
+      "expected": "0 命中 / 1 条目",
+      "actual": "卸载 0 命中 / 插件条目数 8→8",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "M01",
+      "group": "G7 演示态 / NFR-04 / NFR-09",
+      "name": "插件超时：结果区出现「该插件暂时不可用」+ 重试/禁用/卸载 三出口",
+      "expected": "降级行 + 3 出口",
+      "actual": "plugin-retry/plugin-disable/plugin-uninstall",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "M02",
+      "group": "G7 演示态 / NFR-04 / NFR-09",
+      "name": "超时态下主浮层仍可用（NFR-09 崩溃隔离）",
+      "expected": "A3 可见 / 输入框可输入 / 其他结果行仍在",
+      "actual": "{\"state\":\"A3\",\"rows\":2,\"degraded\":1,\"inputDisabled\":false,\"visible\":true}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "M03",
+      "group": "G7 演示态 / NFR-04 / NFR-09",
+      "name": "超时三出口可点：重试恢复 / 禁用生效 / 卸载打开二次确认",
+      "expected": "三出口均有效",
+      "actual": "重试/禁用/卸载均有效",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "M04",
+      "group": "G7 演示态 / NFR-04 / NFR-09",
+      "name": "断网：市场降级为本地已装视图 + 明确提示，已装插件仍可用（NFR-04）",
+      "expected": "离线横幅 + 已装列表 + 触发词可用",
+      "actual": "降级横幅+已装 3 条，fy 触发词可用",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D01",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "静态：列出全部 store.platform / 平台判断引用点（供人工核对）",
+      "expected": "输出清单",
+      "actual": "38 处，明细 → tests/platform-refs.json",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D02",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "白名单 #1/#2：修饰键文案与默认呼出键按平台映射正确",
+      "expected": "win/mac 各自正确",
+      "actual": "win: Alt + Space / mac: ⌥ + Space",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D03",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "白名单 #4：mac 顶部菜单栏 / Win 底部任务栏；常驻菜单结构两端一致",
+      "expected": "位置互换 + 菜单 5 项一致",
+      "actual": "呼出 / 隐藏/快捷启动面板/工具面板/设置/退出（两端一致）",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D04",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "白名单 #5：引导 Step3 / 关于页按平台只列本平台权限项",
+      "expected": "win 2 项 / mac 4 项",
+      "actual": "win=开机自启/文件索引 mac=辅助功能/输入监控/屏幕录制/完全磁盘访问",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D05",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "对齐判据：六套界面在两端结构 / 文案 / 尺寸完全一致（白名单外 0 差异）",
+      "expected": "0 处越界差异",
+      "actual": "grid/page 两种形态 × 6 视图 × (结构+文案+尺寸) 差异 0",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "D06",
+      "group": "G8 双端同期 / PRD 6.6 白名单",
+      "name": "白名单映射 {{PLATFORM}} 标签已核对（§4.4.1 列入 t() 白名单函数）",
+      "expected": "仅平台标签，非产品分叉",
+      "actual": "Windows / macOS（t() 映射，属白名单 #1 文案映射）",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E01",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "6 类空态主行动按钮均可点击且有响应",
+      "expected": "6/6 有效",
+      "actual": "empty-b-add/empty-clip/empty-noresult/empty-plugins/empty-updates/empty-offline",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E02",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "空态下点击 A4 主行动按钮 / 空剪贴板 / 空更新 不崩溃",
+      "expected": "0 异常",
+      "actual": "剪贴板 / 更新 / A4 空态均正常",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E03",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "动态点击覆盖：DOM 中出现的每个 data-act 值点击后无 JS 异常",
+      "expected": "0 异常 / 0 死按钮",
+      "actual": "85 个 act（覆盖 25 种界面状态），成功点击 81 个，异常 0",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E04",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "真实鼠标坐标点击（非 JS .click）能触发平台切换",
+      "expected": "platform=mac",
+      "actual": "CDP mousePressed/Released → macOS",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E05",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "拖拽：B 面板模拟从系统拖入 → 新增快捷项",
+      "expected": "分组项数 +1",
+      "actual": "20→21",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E06",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "E 设置页触发词冲突检测 / 空值校验",
+      "expected": "冲突被拒、空值被拒",
+      "actual": "冲突/空值均被拒绝",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E07",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "Toast 类型样式类正确（ok/warn/err 应命中 CSS .toast.ok 等）",
+      "expected": "class 含独立 kind 类",
+      "actual": "toast ok | toast warn | toast err",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "E08",
+      "group": "G9 空态 / 边界 / data-act 动态点击覆盖",
+      "name": "尺寸规范落地：720px / 420×360 / 1000×680 / 760×520 等关键尺寸",
+      "expected": "与 PRD 5.7 一致",
+      "actual": "{\"view-a\":\"720pxx480px\",\"view-c\":\"420pxx360px\",\"view-d\":\"1000pxx680px\",\"view-f\":\"760pxx520px\"}",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "SHOT",
+      "group": "G10 截图留存",
+      "name": "输出 10 张关键状态截图到 tests/screenshots/",
+      "expected": "10 张 PNG",
+      "actual": "10 张：01-A1-win.png, 02-A3-results.png, 03-A4-empty.png, 04-trigger-fy.png, 05-toolpage-calc.png, 06-market-offline.png, 07-timeout-degraded.png, 08-mac-platform.png, 09-settings-about.png, 10-plugin-auth.png",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "X01",
+      "group": "G11 全局运行时异常",
+      "name": "全流程结束后仍无未捕获 JS 异常 / console error",
+      "expected": "0 条",
+      "actual": "0 条",
+      "pass": true,
+      "err": ""
+    },
+    {
+      "id": "X02",
+      "group": "G11 全局运行时异常",
+      "name": "全流程结束后仍无外部网络请求",
+      "expected": "0 个",
+      "actual": "0 个外部请求",
+      "pass": true,
+      "err": ""
+    }
+  ]
+}

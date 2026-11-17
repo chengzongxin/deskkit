@@ -1,0 +1,77 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "whitelist": [
+    { "id": "1", "diffKind": "modifier-label", "note": "修饰键展示名按平台替换，行为相同" },
+    { "id": "2", "diffKind": "default-hotkey", "note": "Windows 为 Alt+Space，macOS 为 Option+Space" },
+    { "id": "3", "diffKind": "hotkey-conflict", "note": "系统菜单与不换行空格的具体冲突不同" },
+    { "id": "4", "diffKind": "resident-entry", "note": "Windows 用托盘，macOS 用菜单栏" },
+    { "id": "5", "diffKind": "system-permission", "note": "引导页只列本平台需要的系统权限" },
+    { "id": "6", "diffKind": "autostart-api", "note": "同一个开机自启开关，系统接口不同" },
+    { "id": "7", "diffKind": "data-path", "note": "界面只提供打开数据目录，不展示原始路径" },
+    { "id": "8", "diffKind": "index-source", "note": "索引来源不同，结果结构相同" },
+    { "id": "9", "diffKind": "hotkey-api", "note": "热键注册方式不同" },
+    { "id": "10", "diffKind": "capture-permission", "note": "取色在 macOS 需要屏幕录制权限" },
+    { "id": "11", "diffKind": "window-material", "note": "首发不做亚克力和毛玻璃" },
+    { "id": "12", "diffKind": "close-behavior", "note": "关闭等于常驻，退出需要确认" },
+    { "id": "13", "diffKind": "package-format", "note": "安装包格式不同，版本说明在 W8 前可以分平台" }
+  ],
+  "staged": [
+    {
+      "id": "mac-permissions",
+      "category": "platform-depth",
+      "owner": "macos",
+      "dueAt": "W8",
+      "parityPlan": "macOS 首发时补齐辅助功能、输入监控、屏幕录制和完全磁盘访问的引导"
+    },
+    {
+      "id": "win-everything",
+      "category": "platform-depth",
+      "owner": "windows",
+      "dueAt": "W8",
+      "parityPlan": "用户已安装 Everything 时按需查询，不常驻额外进程"
+    },
+    {
+      "id": "context-panel",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "选区上下文只匹配内置工具"
+    },
+    {
+      "id": "action-menu",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "操作菜单保留打开、目录、复制路径、固定和绑定热键"
+    },
+    {
+      "id": "dark-theme",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "沿用同一套语义色，只替换深色值"
+    },
+    {
+      "id": "hotkey-alias",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "可以为单个快捷项绑定全局热键"
+    },
+    {
+      "id": "qr",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "二维码从占位改为真实生成"
+    },
+    {
+      "id": "cloud-sync",
+      "category": "v1",
+      "owner": "both",
+      "dueAt": "W16",
+      "parityPlan": "默认关闭。即使以后开启，也不同步剪贴板正文"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+---
+description: 已归档的 Tauri 规则，不要启用
+alwaysApply: false
+---
+
+# 已归档
+
+不要把本文件复制到 `.cursor/rules/`。全文在 `docs/archive/cursor-rules.mdc`。
+
+现行规则是 `.cursor/rules/deskkit.mdc`。架构见 `docs/10-Current-Architecture.md`。

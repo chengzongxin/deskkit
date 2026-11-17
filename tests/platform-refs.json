@@ -1,0 +1,154 @@
+[
+  {
+    "line": 629,
+    "text": "const TEXT_MAPS = {"
+  },
+  {
+    "line": 907,
+    "text": "function M(){ return TEXT_MAPS[store.platform]; }"
+  },
+  {
+    "line": 908,
+    "text": "function defaultHotkey(){ return store.platform==='win' ? 'Alt + Space' : '⌥ + Space'; }"
+  },
+  {
+    "line": 909,
+    "text": "function backupHotkey(){ return store.platform==='win' ? 'Ctrl + Shift + Space' : '⌘ + ⇧ + Space'; }"
+  },
+  {
+    "line": 910,
+    "text": "function keycap(){"
+  },
+  {
+    "line": 911,
+    "text": "var a=Array.prototype.slice.call(arguments),m=M(),win=store.platform==='win';"
+  },
+  {
+    "line": 918,
+    "text": "H:defaultHotkey(),B:backupHotkey(),"
+  },
+  {
+    "line": 919,
+    "text": "CK:keycap('ctrl','K'),CT:keycap('ctrl','T'),CC:keycap('ctrl',','),CSV:keycap('ctrl','shift','V'),"
+  },
+  {
+    "line": 920,
+    "text": "CN:keycap('ctrl','N'),CP:keycap('ctrl','P'),"
+  },
+  {
+    "line": 922,
+    "text": "PLATFORM:store.platform==='win'?'Windows':'macOS'"
+  },
+  {
+    "line": 1247,
+    "text": "for(var i=0;i<segs.length;i++) segs[i].classList.toggle('on',segs[i].getAttribute('data-v')===store.platform);"
+  },
+  {
+    "line": 1258,
+    "text": "el('menubar').classList.toggle('hidden',store.platform!=='mac');"
+  },
+  {
+    "line": 1259,
+    "text": "el('taskbar').classList.toggle('hidden',store.platform!=='win');"
+  },
+  {
+    "line": 1906,
+    "text": "{id:'summon',   label:'主呼出键',     desc:'全局呼出 / 隐藏浮层',        combo:defaultHotkey()},"
+  },
+  {
+    "line": 1907,
+    "text": "{id:'tools',    label:'常用工具面板', desc:'打开 3×3 工具宫格',          combo:keycap('ctrl','T')},"
+  },
+  {
+    "line": 1908,
+    "text": "{id:'clipboard',label:'剪贴板历史',   desc:'直达剪贴板记录',             combo:keycap('ctrl','shift','V')},"
+  },
+  {
+    "line": 1909,
+    "text": "{id:'action',   label:'操作菜单',     desc:'对选中结果呼出动作',         combo:keycap('ctrl','K')},"
+  },
+  {
+    "line": 1910,
+    "text": "{id:'settings', label:'设置页',       desc:'打开设置',                   combo:keycap('ctrl',',')},"
+  },
+  {
+    "line": 1911,
+    "text": "{id:'picker',   label:'截图取色',     desc:'进入取色态',                 combo:keycap('ctrl','shift','C')}"
+  },
+  {
+    "line": 2004,
+    "text": "var perms=PLATFORM_PERMS[store.platform];"
+  },
+  {
+    "line": 2059,
+    "text": "(g.recordState==='bad'?'<div class=\"conflict-bad\">✕ 已被「操作菜单」占用，建议改为 '+(store.platform==='win'?'Alt + R':'⌥ + R')+'</div>':"
+  },
+  {
+    "line": 2062,
+    "text": "'<p>本平台默认值：<b>'+esc(defaultHotkey())+'</b>。坚持对标主流启动器，同时强制做冲突检测与一键改键，且不产生字符副作用。</p>'+"
+  },
+  {
+    "line": 2063,
+    "text": "'<div style=\"display:flex;align-items:center;gap:16px;margin:8px 0\"><span class=\"keycap-big\">'+esc(g.recordCombo||defaultHotkey())+'</span>'+"
+  },
+  {
+    "line": 2066,
+    "text": "'<div class=\"mini-note\">备用演示键：'+esc(backupHotkey())+' · 顶部控制台「呼出 · 隐藏」按钮可兜底 · 点击桌面空白区也可呼出。</div></div>';"
+  },
+  {
+    "line": 2068,
+    "text": "var perms=PLATFORM_PERMS[store.platform];"
+  },
+  {
+    "line": 2093,
+    "text": "['全局呼出 / 隐藏（Toggle）',defaultHotkey()],"
+  },
+  {
+    "line": 2094,
+    "text": "['备用呼出键',backupHotkey()],"
+  },
+  {
+    "line": 2170,
+    "text": "store.platform=v;"
+  },
+  {
+    "line": 2690,
+    "text": "var list=PLATFORM_PERMS[store.platform];"
+  },
+  {
+    "line": 2699,
+    "text": "if(v==='skip'){ openView('A'); toast('已跳过引导 · 按 '+defaultHotkey()+' 呼出','ok'); return; }"
+  },
+  {
+    "line": 2703,
+    "text": "openView('A'); toast('开始使用 DeskKit · 按 '+defaultHotkey()+' 呼出','ok'); return;"
+  },
+  {
+    "line": 2959,
+    "text": "store.guide.recordCombo=defaultHotkey(); store.guide.recordState='ok'; renderAll();"
+  },
+  {
+    "line": 2960,
+    "text": "toast('已使用平台默认值：'+defaultHotkey(),'ok');"
+  },
+  {
+    "line": 2990,
+    "text": "var combo=store.platform==='win'?mods.concat([key]).join(' + '):mods.join('')+key;"
+  },
+  {
+    "line": 2993,
+    "text": "var bad=(combo===keycap('ctrl','K')||combo===keycap('ctrl','T')||combo===keycap('ctrl',','));"
+  },
+  {
+    "line": 2996,
+    "text": "toast(bad?'冲突：该组合已被占用，建议改为 '+(store.platform==='win'?'Alt + R':'⌥ + R'):'组合可用 · 已记录为新呼出键',bad?'err':'ok');"
+  },
+  {
+    "line": 2999,
+    "text": "if(owner) store.settings.hotkeys[rec.target]={combo:combo,conflict:'已被「'+owner.label+'」占用，建议改为 '+(store.platform==='win'?'Alt + R':'⌥ + R')};"
+  },
+  {
+    "line": 3228,
+    "text": "toast('DeskKit 原型已就绪 · 按 '+defaultHotkey()+' 呼出 / 隐藏','ok');"
+  }
+]

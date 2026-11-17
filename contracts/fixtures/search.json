@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    { "id": "wechat", "kind": "app", "title": "微信", "keywords": ["wx", "weixin", "微信"] },
+    { "id": "control", "kind": "app", "title": "控制面板", "keywords": ["kzmb", "控制面板"] },
+    { "id": "plugin-sample", "kind": "plugin", "title": "不应出现", "keywords": ["wx"] }
+  ],
+  "cases": [
+    { "query": "wx", "expectIds": ["wechat"] },
+    { "query": "weixin", "expectIds": ["wechat"] },
+    { "query": "微信", "expectIds": ["wechat"] },
+    { "query": "kzmb", "expectIds": ["control"] }
+  ]
+}

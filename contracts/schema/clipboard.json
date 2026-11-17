@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "title": "ClipboardHistory",
+  "type": "object",
+  "required": ["schemaVersion", "records"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "paused": { "type": "boolean" },
+    "retention": { "enum": ["7d", "30d", "forever"] },
+    "excludedApps": { "type": "array", "items": { "type": "string" } },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["text", "image", "file"] },
+          "text": { "type": "string" },
+          "favorite": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

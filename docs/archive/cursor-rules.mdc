@@ -1,0 +1,59 @@
+---
+description: 已作废的 Tauri 规则，不要启用
+alwaysApply: false
+---
+
+# DeskKit 开发规则（历史）
+
+> **不要把本文件复制到 `.cursor/rules/`。** 这里的 Tauri、React、插件权限规则已作废。现行架构见 `docs/10-Current-Architecture.md`。
+
+以下正文是 2026-11-13 的 Tauri 约束，只留作审计。
+
+## 技术栈（不要更改）
+
+- Tauri v2 + Rust Core + 系统 WebView（Win WebView2 / mac WKWebView）+ React 18 + TypeScript + Vite + zustand。
+- 否决 Electron（空闲内存 250–320MB，不满足 ≤80MB）与原生混合（插件生态 + 双端对齐成本）。
+- 搜索 / 拼音 / 索引 / 权限 / 系统能力**全部放 Rust 侧**；前端只做渲染与状态。
+
+## 硬约束
+
+1. **唯一平台分叉点**：`#[cfg(target_os)]` / `process.platform` 只允许出现在 `src-tauri/src/platform/`；前端零平台判断。修饰键文案由 `PlatformAdapter.modifier_labels()` 注入。
+2. **双端同期**：13 项白名单之外不得有任何平台差异（白名单见 TECH-SPEC §7.1）。同一 `release/version.json` + `CHANGELOG.md` + `feature-manifest.json`；CI 双 job 全绿才 publish，任一失败整批不发。功能开关不得按平台分叉。
+3. **权限是运行时强制拦截，不是 UI 弹窗**：装载期最小 capability → IPC ACL default-deny → PermissionBroker/GrantTable → ScopeValidator（deny 优先） → CapabilityExecutor 在 Core 内代执行。只返回结果数据，永不返回句柄 / 路径 / token。授权弹窗只写决策。
+4. 插件 capability 仅含 `dk-plugin:allow-bridge-call`；插件直调任意 Tauri command 必须被 ACL 拒绝且**不弹窗**。manifest 的 `autostart` / `backgroundAllowed` 宿主强制 false。
+5. 撤销权限后立即生效：删 grant + 广播 `permission.revoked` + 作废在飞请求，下一次调用立即 `E_PERMISSION_DENIED`，无需重启。`once` 会话级、不落盘、用过即失效；渲染期只读判定不得提前消耗。
+6. **Esc 逐级回退用回退栈**：工具内页 → 结果 → 触发词胶囊 → 清空输入 → 隐藏。禁止一键直接隐藏。
+7. 每个请求必带 `deadlineMs`；输入变化先 `cancel` 再 `request`；晚到响应按 id 失效丢弃。本地结果 <30ms 先出，插件结果异步合流、超时只丢该分组。
+8. **所有色值只在 `src/theme/tokens.ts`**（语义名，强调色 `#3B6CF6`）；尺寸只取自 PRD 5.7 规范表。禁止在业务样式里散落 hex 或硬编码 px。
+9. 所有持久化 JSON 带 `schemaVersion` + 单向 migration 链；设置 / 分组变更用临时文件 + 原子替换。时间统一 ISO 8601 UTC 存储。
+10. **本地优先**：默认零外发；云同步默认关闭且不实现；仅市场 / 在线翻译 / 更新走网络且受 `E_OFFLINE` 降级。内置 5 组工具与已装插件完全离线可用。
+11. 统一响应 `{ code, data, message, requestId, tookMs }`；错误码只用 `shared/contracts/errors.ts` 的 12 个 `E_*`，宿主级用 `DK-<域>-<三位号>`；禁止自造字符串。
+12. IPC 命名：command `dk_<domain>_<action>`，event `dk://event/<name>`，插件桥 `dk://plugin/<id>/bridge`；Rust / TS 双端镜像，编译期校验。
+13. 大对象（图片 / 文件 / 选区）一律 `payloadRef` 句柄，不内联二进制；读取仍受权限与 scope 约束。
+14. 内置工具以 `source=builtin` 走与第三方插件**同一套协议**（4 形态统一 `invoke`），V1 开放生态时协议零改动。
+
+## 关键数值
+
+| 项 | 值 |
+|---|---|
+| 呼出响应 | <100ms P95；冷启首次 <300ms |
+| 输入 → 结果 | <100ms（本地索引 <30ms） |
+| 空闲常驻内存 | ≤80MB（预算 ≈42MB） |
+| 默认呼出键 | Win `Alt+Space` / mac `⌥+Space`（备用 `Ctrl/⌘+Shift+Space`） |
+| 主启动器 | 720px 宽，输入行 64，结果行 48，底栏 32，上限 480，距顶 22% |
+| 插件超时 | onQuery 800ms / onTrigger 300ms / onOpenSlot 3000ms / onContext 1500ms / bridge.call 1500ms |
+| 动效 | ≤120ms |
+| 权限 | 固定 6 类；`allow` / `deny` / `once` |
+
+## 禁止事项
+
+- 禁止 TODO、伪代码、省略号、只写签名不写函数体；每个文件输出完整可编译代码。
+- 禁止在 `platform/` 之外写平台分支，禁止按平台分叉功能开关。
+- 禁止把权限判断做成 UI 层的 if / 开关。
+- 禁止让插件拿到 OS 句柄、路径对象、token 或后台定时器。
+- 禁止跳过 `shared/contracts` 契约先行直接写业务模块（T01 未完成不得开始 T02/T03）。
+- 禁止修改 `handoff/` / `docs/` 下的规格文档来迁就实现；有冲突先提出，按 CURSOR.md 第 6 章优先级处理。
+
+## 每阶段自检
+
+运行 `handoff/TECH-SPEC.md` 第 10 章对应「完成判据」并逐条报告通过/失败；然后 `cargo clippy -- -D warnings`、`cargo test`、`pnpm tsc --noEmit`、`pnpm vitest run`、`node scripts/parity-check.mjs`。不要跳过失败项。

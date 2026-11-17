@@ -1,0 +1,71 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "keys": {
+    "windows": {
+      "alt": "Alt",
+      "ctrl": "Ctrl",
+      "control": "Ctrl",
+      "command": "Win",
+      "shift": "Shift",
+      "space": "Space",
+      "enter": "Enter",
+      "esc": "Esc",
+      "tab": "Tab",
+      "up": "↑",
+      "down": "↓",
+      "f1": "F1",
+      "c": "C",
+      "t": "T",
+      "v": "V",
+      "comma": ",",
+      "k": "K",
+      "n": "N",
+      "p": "P",
+      "r": "R"
+    },
+    "macos": {
+      "alt": "⌥",
+      "ctrl": "⌘",
+      "control": "⌃",
+      "command": "⌘",
+      "shift": "⇧",
+      "space": "Space",
+      "enter": "⏎",
+      "esc": "Esc",
+      "tab": "Tab",
+      "up": "↑",
+      "down": "↓",
+      "f1": "F1",
+      "c": "C",
+      "t": "T",
+      "v": "V",
+      "comma": ",",
+      "k": "K",
+      "n": "N",
+      "p": "P",
+      "r": "R"
+    }
+  },
+  "chords": {
+    "summon": ["alt", "space"],
+    "up": ["up"],
+    "down": ["down"],
+    "previous": ["ctrl", "p"],
+    "next": ["ctrl", "n"],
+    "execute": ["enter"],
+    "secondary": ["shift", "enter"],
+    "complete": ["tab"],
+    "escape": ["esc"],
+    "tools": ["ctrl", "t"],
+    "clipboard": ["ctrl", "shift", "v"],
+    "settings": ["ctrl", "comma"],
+    "actionMenu": ["ctrl", "k"],
+    "picker": ["ctrl", "shift", "c"],
+    "cheat": ["f1"]
+  },
+  "fallbackSummon": {
+    "windows": ["alt", "r"],
+    "macos": ["alt", "r"]
+  }
+}

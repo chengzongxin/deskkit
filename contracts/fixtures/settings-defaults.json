@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "general": {
+    "autoLaunch": false,
+    "summonMode": "hotkey",
+    "blurHide": true,
+    "multiScreen": "followCursor",
+    "theme": "light",
+    "density": "standard",
+    "clipboardRetention": "7d",
+    "clipboardPaused": false,
+    "cloudSync": false,
+    "autoUpdate": true
+  },
+  "hotkeys": {
+    "summon": "alt+space",
+    "tools": "ctrl+t",
+    "clipboard": "ctrl+shift+v",
+    "settings": "ctrl+comma",
+    "actionMenu": "ctrl+k",
+    "picker": "ctrl+shift+c"
+  },
+  "triggers": {
+    "translate": "fy",
+    "calc": "js",
+    "color": "color",
+    "timestamp": "ts",
+    "clipboard": "clip"
+  },
+  "tools": {
+    "order": ["clipboard", "picker", "translate", "calc", "timestamp", "unit", "color", "qr"],
+    "hidden": []
+  },
+  "onboarding": {
+    "done": false,
+    "presets": ["clipboard", "calc", "translate", "picker", "timestamp"]
+  },
+  "about": {
+    "checkUpdateOnLaunch": true
+  }
+}

@@ -1,0 +1,32 @@
+---
+description: DeskKit 现行开发约束（Windows WPF，macOS AppKit）
+alwaysApply: true
+---
+
+# DeskKit 开发规则
+
+架构以 `docs/10-Current-Architecture.md` 为准。功能范围以 `docs/06-Incremental-PRD.md` 为准。尺寸、配色、键盘以 `docs/01-PRD.md` 第 5、6 章为准，并服从 06 的删改。
+
+## 技术栈
+
+- Windows：C# / .NET 8 / WPF。系统调用用 CsWin32。
+- macOS：Swift + AppKit。主界面不用 SwiftUI，不用 WKWebView。
+- 两端各写业务代码。对齐靠 `contracts/` 和同一套夹具，不设共享 Rust 核心。
+- 不做插件、不做 WebView、不引入 Tauri、Electron、WinUI 3、Flutter。
+
+## 硬约束
+
+1. 不实现插件市场、插件授权、插件权限、触发词 `ocr`。设置只有常规、快捷键、关于三个 Tab。
+2. `Esc` 逐级回退：工具内页 → 结果 → 触发词胶囊 → 清空输入 → 隐藏。禁止一次按键直接隐藏。
+3. 色值和尺寸只来自 `contracts/tokens.json` 与 `contracts/layout.json`。分组第 4 色是 `#9B6CF6`。
+4. 修饰键文案从 `contracts/keymap.json` 读。界面代码不写死 `Alt` 或 `⌥`。
+5. 结果只有四类：应用、文件、网址、内置工具。
+6. 持久化 JSON 带 `schemaVersion`，先写临时文件再替换。
+7. 搜索每次输入先取消上一次。内置工具失败不能拖垮主列表。
+8. macOS 权限未授予时给出引导，禁止返回空数据假装成功。
+9. 80MB 不是选型条件，也不是发布阻断。关于页记录实测内存。
+10. 不要修改 `prototype/`、`tests/` 和 `docs/archive/` 来迁就实现。
+
+## 环境
+
+本机是 macOS 时，WPF 工程可以编译，但不能运行。界面验收放到 Windows 上。`net8.0` 的 Core 测试可以在 macOS 上跑。

@@ -1,0 +1,26 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "note": "Esc 链以本文件为准。TOOL 比原型的 TRIGGER 多允许进入 A4，否则无法走出「触发词 → 空结果 → 默认 → 隐藏」。",
+  "states": ["HIDDEN", "A1", "A2", "A3", "A4", "TOOL", "TOOLPAGE"],
+  "depth": { "HIDDEN": 0, "A1": 1, "A2": 2, "A4": 3, "A3": 3, "TOOL": 4, "TOOLPAGE": 5 },
+  "rename": { "TRIGGER": "TOOL" },
+  "transitions": {
+    "HIDDEN": ["A1", "TOOLPAGE"],
+    "A1": ["A2", "A3", "TOOL", "HIDDEN", "TOOLPAGE"],
+    "A2": ["A3", "A4", "A1", "TOOL", "HIDDEN", "TOOLPAGE"],
+    "A3": ["A2", "A4", "A1", "TOOL", "TOOLPAGE", "HIDDEN"],
+    "A4": ["A2", "A3", "A1", "HIDDEN"],
+    "TOOL": ["A2", "A3", "A4", "TOOLPAGE", "HIDDEN", "A1"],
+    "TOOLPAGE": ["A3", "TOOL", "HIDDEN", "A1", "A2"]
+  },
+  "esc": {
+    "TOOLPAGE": ["A1", "HIDDEN"],
+    "TOOL": ["A4", "A1", "HIDDEN"],
+    "A4": ["A1", "HIDDEN"],
+    "A3": ["A2", "A1", "HIDDEN"],
+    "A2": ["A1", "HIDDEN"],
+    "A1": ["HIDDEN"],
+    "HIDDEN": []
+  }
+}

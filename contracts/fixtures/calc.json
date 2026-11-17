@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    { "expr": "520+999-1314", "value": "205" },
+    { "expr": "123*4", "value": "492" },
+    { "expr": "(1+2)*3", "value": "9" },
+    { "expr": "1/0", "error": "INVALID_ARG" }
+  ]
+}

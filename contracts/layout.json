@@ -1,0 +1,56 @@
+{
+  "contractVersion": "1",
+  "schemaVersion": 1,
+  "fontFamily": "Microsoft YaHei UI, Segoe UI",
+  "launcher": {
+    "width": 720,
+    "inputRowHeight": 64,
+    "resultRowHeight": 48,
+    "resultRowHeightCompact": 40,
+    "footerHeight": 32,
+    "maxHeight": 480,
+    "defaultHeight": 360,
+    "emptyHeight": 260,
+    "topRatio": 0.22,
+    "padding": 16,
+    "resultPaddingX": 12,
+    "edgeInset": 16,
+    "maxResultRows": 8,
+    "cornerRadius": 14,
+    "borderThickness": 1,
+    "selectionBar": 3
+  },
+  "tools": {
+    "gridWidth": 420,
+    "gridHeight": 360,
+    "pageWidth": 720,
+    "pageHeight": 520,
+    "cellWidth": 112,
+    "cellHeight": 96,
+    "icon": 32
+  },
+  "windows": {
+    "panel": { "width": 960, "height": 640 },
+    "settings": { "width": 1000, "height": 680 },
+    "guide": { "width": 760, "height": 520 },
+    "navWidth": 200,
+    "headerHeight": 48,
+    "panelFooterHeight": 36,
+    "settingsFooterHeight": 32
+  },
+  "radius": { "float": 14, "card": 10, "control": 8, "chip": 999 },
+  "spacing": [4, 8, 12, 16, 24, 32],
+  "cell": { "shortcut": 80, "icon": 40, "resultIcon": 32 },
+  "shadow": { "y1": 12, "blur1": 40, "alpha1": 0.14, "y2": 2, "blur2": 8, "alpha2": 0.06 },
+  "motionMs": { "show": 120, "drag": 100, "blurHide": 150 },
+  "type": {
+    "input": { "size": 18, "weight": 500 },
+    "windowTitle": { "size": 16, "weight": 600 },
+    "result": { "size": 14, "weight": 500 },
+    "subtitle": { "size": 12, "weight": 400 },
+    "group": { "size": 12, "weight": 600 },
+    "badge": { "size": 11, "weight": 500 },
+    "cellLabel": { "size": 12, "weight": 400 },
+    "numeric": { "size": 14, "weight": 600 }
+  }
+}

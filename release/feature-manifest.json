@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "version": "0.9.0-win",
+  "core": [
+    { "id": "contracts", "windows": "shipped", "macos": "deferred" },
+    { "id": "summon-hotkey", "windows": "shipped", "macos": "deferred" },
+    { "id": "launcher-shell", "windows": "shipped", "macos": "deferred" }
+  ],
+  "staged": [
+    { "id": "search", "dueAt": "W0", "owner": "windows" },
+    { "id": "builtin-tools", "dueAt": "W0", "owner": "windows" },
+    { "id": "macos-core", "dueAt": "W8", "owner": "macos" }
+  ]
+}

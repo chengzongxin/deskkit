@@ -1,0 +1,207 @@
+%% DeskKit 核心数据结构与接口类图
+%% 来源：docs/02-Architecture.md §5 ｜ 撰写：高见远（架构师）｜ v1.0
+%% 组合 *-- ／ 关联依赖 --> ／ 弱依赖与产出 ..> ／ 多重性 "1" "0..*"
+classDiagram
+    class IndexItem {
+        +String id
+        +IndexKind kind
+        +String title
+        +String subtitle
+        +String iconRef
+        +String sourcePath
+        +String pinyin
+        +String initials
+        +String[] keywords
+        +Int lastUsedAt
+        +Int useCount
+        +String pinnedTo
+        +score(SearchQuery) Float
+    }
+    class Group {
+        +String id
+        +String name
+        +String colorToken
+        +Int order
+        +Bool collapsed
+        +addItem(String, Int) void
+        +removeItem(String) void
+        +deleteKeepingItems() void
+    }
+    class LaunchItem {
+        +String groupId
+        +String itemId
+        +Int order
+        +Int addedAt
+        +String sourceType
+    }
+    class ClipboardRecord {
+        +String id
+        +ContentType contentType
+        +String payloadRef
+        +String preview
+        +String sourceApp
+        +Int createdAt
+        +Bool favorite
+        +RetentionPolicy retention
+        +isExcluded(String) Bool
+    }
+    class PluginInstance {
+        +String pluginId
+        +String version
+        +PluginState state
+        +String manifestRef
+        +String webviewLabel
+        +String source
+        +String integrity
+        +Int installedAt
+        +Int crashCount
+        +activate() void
+        +suspend() void
+        +disable() void
+    }
+    class PluginManifest {
+        +String manifest_version
+        +String id
+        +String min_host_version
+        +Form[] forms
+        +PermissionDecl[] permissions
+        +LifecycleDecl lifecycle
+        +validate() ValidationResult
+    }
+    class PermissionGrant {
+        +String pluginId
+        +String capabilityId
+        +GrantDecision decision
+        +Scope scope
+        +Int grantedAt
+        +String sessionId
+        +isEffective(String) Bool
+        +revoke() void
+    }
+    class TriggerWord {
+        +String word
+        +TargetType targetType
+        +String targetId
+        +Bool exclusive
+        +String ownerPluginId
+        +String[] conflictWith
+        +checkConflict() ConflictInfo
+    }
+    class SearchQuery {
+        +String raw
+        +String trigger
+        +String payload
+        +String[] tokens
+        +ContentType contextType
+        +Int deadlineMs
+    }
+    class ResultItem {
+        +String id
+        +String group
+        +String title
+        +String subtitle
+        +String iconRef
+        +Action[] actions
+        +String sourceId
+        +Bool asyncLoading
+    }
+    class SearchResult {
+        +ResultItem[] items
+        +Int tookMs
+        +String[] degradedPlugins
+    }
+
+    class PlatformAdapter {
+        <<interface>>
+        +default_hotkey() Hotkey
+        +data_dir() String
+        +required_permissions() String[]
+        +capture_screen() String
+        +apply_window_material() void
+    }
+    class IndexService {
+        +rebuild() void
+        +incrementalUpdate() void
+        +lookup(String) IndexItem[]
+    }
+    class SearchService {
+        +search(SearchQuery) SearchResult
+        +matchPinyin(String) IndexItem[]
+        +evalExpression(String) String
+    }
+    class ClipboardService {
+        +startWatching() void
+        +history(Int) ClipboardRecord[]
+        +clear() void
+    }
+    class SettingsRepository {
+        +load() Settings
+        +saveAtomic(Settings) void
+        +migrate(Int) void
+    }
+    class HotkeyService {
+        +register(Hotkey) Result
+        +detectConflict(Hotkey) ConflictInfo
+    }
+    class ContextMatcher {
+        +match(ClipboardRecord) ResultItem[]
+    }
+    class PluginHost {
+        +install(String) PluginInstance
+        +uninstall(String) void
+        +invoke(String, String, Envelope) Envelope
+        +supervise(String) void
+        +recycle(String) void
+    }
+    class PermissionBroker {
+        +check(String, String, Object) Decision
+        +grant(String, String, GrantDecision) void
+        +revoke(String, String) void
+        +broadcastRevoked(String) void
+    }
+    class ScopeValidator {
+        +validate(Scope, Object) Bool
+    }
+    class CapabilityExecutor {
+        +execute(String, Object) Object
+    }
+    class BridgeProtocol {
+        +encode(Envelope) String
+        +decode(String) Envelope
+        +cancel(String) void
+    }
+    class LifecycleManager {
+        +transition(String, PluginState) void
+        +rollback(String) void
+        +cleanupOnUninstall(String) void
+    }
+    class MarketService {
+        +list() PluginMeta[]
+        +detail(String) PluginMeta
+        +verifyBundle(String) Bool
+    }
+
+    Group "1" *-- "0..*" LaunchItem : 组合（删除分组时项目移入未分组）
+    LaunchItem "0..*" --> "1" IndexItem : 引用
+    SearchService --> IndexService : 依赖
+    SearchService ..> SearchResult : 产出
+    SearchResult "1" *-- "0..*" ResultItem : 组合
+    SearchQuery ..> SearchService : 输入
+    ClipboardService "1" *-- "0..*" ClipboardRecord : 组合
+    ContextMatcher --> ClipboardService : 依赖
+    ContextMatcher ..> ResultItem : 产出
+    PluginInstance "1" --> "1" PluginManifest : 持有
+    PluginInstance "1" --> "0..*" PermissionGrant : 授权集合
+    PluginInstance "1" --> "0..*" TriggerWord : 注册触发词
+    PluginHost "1" *-- "0..*" PluginInstance : 管理
+    PluginHost --> BridgeProtocol : 依赖
+    PluginHost --> LifecycleManager : 依赖
+    PluginHost --> MarketService : 依赖
+    PermissionBroker "1" *-- "0..*" PermissionGrant : 读写 GrantTable
+    PermissionBroker --> ScopeValidator : 依赖
+    PermissionBroker --> CapabilityExecutor : 授权通过后委派
+    BridgeProtocol --> PermissionBroker : 每个 bridge.call 必经
+    PluginHost ..> PlatformAdapter : 仅经抽象层访问 OS
+    SearchService ..> PlatformAdapter : 索引来源
+    HotkeyService ..> PlatformAdapter : 热键注册
+    SettingsRepository ..> PlatformAdapter : data_dir

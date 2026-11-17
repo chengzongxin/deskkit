@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "ungroupedId": "ungrouped",
+  "deleteGroupId": "office",
+  "document": {
+    "schemaVersion": 1,
+    "groups": [
+      { "id": "office", "name": "办公", "color": "#3B6CF6", "itemIds": ["word"] },
+      { "id": "design", "name": "设计", "color": "#18A058", "itemIds": ["figma"] },
+      { "id": "ungrouped", "name": "未分组", "color": "#98A1B0", "itemIds": [] }
+    ],
+    "items": [
+      { "id": "word", "title": "Word" },
+      { "id": "figma", "title": "Figma" }
+    ]
+  },
+  "expectItemIdsInUngrouped": ["word"],
+  "expectRemainingGroupIds": ["design", "ungrouped"],
+  "expectItemIds": ["word", "figma"]
+}
