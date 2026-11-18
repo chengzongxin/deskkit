@@ -150,6 +150,23 @@ final class Session {
         library = read(Library.self, name: "groups.json") ?? library
         clips = read([Clip].self, name: "clipboard.json") ?? []
         recents = read([String].self, name: "recents.json") ?? []
+        if purgeReservedNavGroup() { write(library, name: "groups.json") }
+    }
+
+    @discardableResult
+    private func purgeReservedNavGroup() -> Bool {
+        guard let index = library.groups.firstIndex(where: { $0.id == "fav" }) else { return false }
+        let orphaned = library.groups[index].itemIds
+        library.groups.remove(at: index)
+        guard !orphaned.isEmpty else { return true }
+        if let ungrouped = library.groups.firstIndex(where: { $0.id == "ungrouped" }) {
+            for itemId in orphaned where !library.groups[ungrouped].itemIds.contains(itemId) {
+                library.groups[ungrouped].itemIds.append(itemId)
+            }
+        } else {
+            library.groups.append(Group(id: "ungrouped", name: "未分组", color: "#98A1B0", itemIds: orphaned))
+        }
+        return true
     }
 
     func save() {
@@ -288,6 +305,20 @@ final class Session {
         onHide?()
     }
 
+    func reorderGroup(_ sourceId: String, relativeTo targetId: String, placeAfter: Bool = false) {
+        guard sourceId != targetId else { return }
+        guard let from = library.groups.firstIndex(where: { $0.id == sourceId }),
+              let to = library.groups.firstIndex(where: { $0.id == targetId }) else { return }
+        let group = library.groups.remove(at: from)
+        var insert = to
+        if from < to { insert -= 1 }
+        if placeAfter { insert += 1 }
+        library.groups.insert(group, at: insert)
+        save()
+        Log.info("分组顺序已更新")
+        onChange()
+    }
+
     func renameGroup(_ id: String, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = library.groups.firstIndex(where: { $0.id == id }) else {
@@ -302,14 +333,28 @@ final class Session {
     }
 
     func deleteGroup(_ id: String) {
+        guard id != "ungrouped" else {
+            Log.warn("不能删除未分组")
+            return
+        }
+        guard let group = library.groups.first(where: { $0.id == id }) else {
+            Log.warn("分组不存在")
+            return
+        }
         var records = library.groups.map { GroupRecord(id: $0.id, name: $0.name, color: $0.color, itemIds: $0.itemIds) }
-        let items = library.items.map { ItemRecord(id: $0.id, title: $0.title) }
-        _ = GroupEditor.delete(groups: &records, items: items, groupId: id, ungroupedId: "ungrouped", ungroupedName: "未分组")
+        var items = library.items.map { ItemRecord(id: $0.id, title: $0.title) }
+        let removed = GroupEditor.delete(groups: &records, items: &items, groupId: id, ungroupedId: "ungrouped", ungroupedName: "未分组")
+        guard removed.ok else {
+            Log.warn(removed.message)
+            return
+        }
+        let remaining = Set(items.map(\.id))
         library.groups = records.map { record in
             Group(id: record.id, name: record.name, color: record.color.isEmpty ? "#98A1B0" : record.color, itemIds: record.itemIds)
         }
+        library.items.removeAll { !remaining.contains($0.id) }
         save()
-        Log.info("已删除分组，项目移入未分组")
+        Log.info("已删除分组「\(group.name)」，并移除 \(group.itemIds.count) 个快捷项")
         onChange()
     }
 

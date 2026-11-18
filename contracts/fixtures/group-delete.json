@@ -14,7 +14,7 @@
       { "id": "figma", "title": "Figma" }
     ]
   },
-  "expectItemIdsInUngrouped": ["word"],
+  "expectItemIdsInUngrouped": [],
   "expectRemainingGroupIds": ["design", "ungrouped"],
-  "expectItemIds": ["word", "figma"]
+  "expectItemIds": ["figma"]
 }

@@ -63,6 +63,11 @@ public sealed class Session
 
         Clips = JsonStore.Read<List<Clip>>("clipboard.json") ?? [];
         Recents = JsonStore.Read<List<string>>("recents.json") ?? [];
+
+        if (PurgeReservedNavGroup())
+        {
+            JsonStore.Write(Library, "groups.json");
+        }
     }
 
     public void Save()
@@ -383,6 +388,38 @@ public sealed class Session
         OnHide?.Invoke();
     }
 
+    public void ReorderGroup(string sourceId, string targetId, bool placeAfter = false)
+    {
+        if (sourceId == targetId)
+        {
+            return;
+        }
+
+        var from = Library.Groups.FindIndex(group => group.Id == sourceId);
+        var to = Library.Groups.FindIndex(group => group.Id == targetId);
+        if (from < 0 || to < 0)
+        {
+            return;
+        }
+
+        var group = Library.Groups[from];
+        Library.Groups.RemoveAt(from);
+        if (from < to)
+        {
+            to--;
+        }
+
+        if (placeAfter)
+        {
+            to++;
+        }
+
+        Library.Groups.Insert(to, group);
+        Save();
+        Log.Info($"分组已移动到「{Library.Groups[to].Name}」位置");
+        OnChange();
+    }
+
     public void RenameGroup(string id, string name)
     {
         var trimmed = name.Trim();
@@ -402,9 +439,29 @@ public sealed class Session
 
     public void DeleteGroup(string id)
     {
-        var records = Library.Groups.Select(group => new GroupRecord(group.Id, group.Name, group.Color, group.ItemIds)).ToList();
-        var items = Library.Items.Select(item => new ItemRecord(item.Id, item.Title)).ToArray();
-        GroupEditor.Delete(records, items, id, "ungrouped", "未分组");
+        if (id == "ungrouped")
+        {
+            Log.Warn("不能删除未分组");
+            return;
+        }
+
+        var group = Library.Groups.FirstOrDefault(entry => entry.Id == id);
+        if (group == null)
+        {
+            Log.Warn("分组不存在");
+            return;
+        }
+
+        var records = Library.Groups.Select(entry => new GroupRecord(entry.Id, entry.Name, entry.Color, entry.ItemIds)).ToList();
+        var items = Library.Items.Select(item => new ItemRecord(item.Id, item.Title)).ToList();
+        var removed = GroupEditor.Delete(records, items, id, "ungrouped", "未分组");
+        if (!removed.Ok)
+        {
+            Log.Warn(removed.Message);
+            return;
+        }
+
+        var remaining = items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
         Library.Groups = records.Select(record => new Group
         {
             Id = record.Id,
@@ -412,8 +469,9 @@ public sealed class Session
             Color = string.IsNullOrEmpty(record.Color) ? "#98A1B0" : record.Color,
             ItemIds = record.ItemIds
         }).ToList();
+        Library.Items.RemoveAll(item => !remaining.Contains(item.Id));
         Save();
-        Log.Info("已删除分组，项目移入未分组");
+        Log.Info($"已删除分组「{group.Name}」，并移除 {group.ItemIds.Count} 个快捷项");
         OnChange();
     }
 
@@ -674,6 +732,42 @@ public sealed class Session
         Groups = [new Group { Id = "ungrouped", Name = "未分组", Color = "#98A1B0", ItemIds = [] }],
         Items = []
     };
+
+    /// <summary>移除已废弃的侧栏虚拟分组「收藏」(id: fav)。</summary>
+    static bool PurgeReservedNavGroup(Library library)
+    {
+        var index = library.Groups.FindIndex(group => group.Id == "fav");
+        if (index < 0)
+        {
+            return false;
+        }
+
+        var orphaned = library.Groups[index].ItemIds;
+        library.Groups.RemoveAt(index);
+        if (orphaned.Count == 0)
+        {
+            return true;
+        }
+
+        var ungrouped = library.Groups.FindIndex(group => group.Id == "ungrouped");
+        if (ungrouped < 0)
+        {
+            library.Groups.Add(new Group { Id = "ungrouped", Name = "未分组", Color = "#98A1B0", ItemIds = orphaned });
+            return true;
+        }
+
+        foreach (var itemId in orphaned)
+        {
+            if (!library.Groups[ungrouped].ItemIds.Contains(itemId))
+            {
+                library.Groups[ungrouped].ItemIds.Add(itemId);
+            }
+        }
+
+        return true;
+    }
+
+    bool PurgeReservedNavGroup() => PurgeReservedNavGroup(Library);
 }
 
 public static class Catalog

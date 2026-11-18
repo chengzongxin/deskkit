@@ -32,6 +32,7 @@ public static class Glyph
     public const string Doc = "\uE8A5";
     public const string App = "\uECAA";
     public const string Edit = "\uE70F";
+    public const string Delete = "\uE74D";
 
     public static string ForTool(string? id) => id switch
     {

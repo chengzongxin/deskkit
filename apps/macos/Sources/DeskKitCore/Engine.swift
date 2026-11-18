@@ -108,21 +108,18 @@ public struct ItemRecord {
 }
 
 public enum GroupEditor {
-    public static func delete(groups: inout [GroupRecord], items: [ItemRecord], groupId: String, ungroupedId: String, ungroupedName: String) -> DkResult {
+    public static func delete(groups: inout [GroupRecord], items: inout [ItemRecord], groupId: String, ungroupedId: String, ungroupedName: String) -> DkResult {
         guard groupId != ungroupedId else { return .fail("INVALID_ARG", "不能删除未分组") }
         guard let index = groups.firstIndex(where: { $0.id == groupId }) else {
             return .fail("INVALID_ARG", "分组不存在")
         }
-        let moving = groups[index].itemIds
+        let removing = Set(groups[index].itemIds)
         groups.remove(at: index)
-        if let slot = groups.firstIndex(where: { $0.id == ungroupedId }) {
-            for id in moving where !groups[slot].itemIds.contains(id) {
-                groups[slot].itemIds.append(id)
-            }
-        } else {
-            groups.append(GroupRecord(id: ungroupedId, name: ungroupedName, color: "", itemIds: moving))
+        for i in groups.indices {
+            groups[i].itemIds.removeAll { removing.contains($0) }
         }
-        return .success(items.map(\.id).joined(separator: ","))
+        items.removeAll { removing.contains($0.id) }
+        return .success(removing.sorted().joined(separator: ","))
     }
 }
 

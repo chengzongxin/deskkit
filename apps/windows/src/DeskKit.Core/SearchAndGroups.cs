@@ -83,7 +83,7 @@ public sealed class ItemRecord
 
 public static class GroupEditor
 {
-    public static DkResult Delete(List<GroupRecord> groups, IReadOnlyList<ItemRecord> items, string groupId, string ungroupedId, string ungroupedName)
+    public static DkResult Delete(List<GroupRecord> groups, IList<ItemRecord> items, string groupId, string ungroupedId, string _)
     {
         if (groupId == ungroupedId)
         {
@@ -96,24 +96,21 @@ public static class GroupEditor
             return DkResult.Fail("INVALID_ARG", "分组不存在");
         }
 
-        var moving = groups[index].ItemIds;
+        var removing = new HashSet<string>(groups[index].ItemIds, StringComparer.Ordinal);
         groups.RemoveAt(index);
-        var slot = groups.FindIndex(group => group.Id == ungroupedId);
-        if (slot >= 0)
+        foreach (var group in groups)
         {
-            foreach (var id in moving)
-            {
-                if (!groups[slot].ItemIds.Contains(id))
-                {
-                    groups[slot].ItemIds.Add(id);
-                }
-            }
-        }
-        else
-        {
-            groups.Add(new GroupRecord(ungroupedId, ungroupedName, "", moving));
+            group.ItemIds.RemoveAll(id => removing.Contains(id));
         }
 
-        return DkResult.Success(string.Join(",", items.Select(item => item.Id)));
+        for (var i = items.Count - 1; i >= 0; i--)
+        {
+            if (removing.Contains(items[i].Id))
+            {
+                items.RemoveAt(i);
+            }
+        }
+
+        return DkResult.Success(string.Join(",", removing));
     }
 }

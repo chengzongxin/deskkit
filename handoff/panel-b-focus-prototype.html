@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DeskKit 快捷启动 · 聚焦视图原型</title>
+  <style>
+    :root {
+      --bg-canvas: #141922;
+      --bg-float: #1c2430;
+      --bg-subtle: #242c38;
+      --bg-hover: #2c3544;
+      --bg-selected: #243656;
+      --bg-input: #1c2430;
+      --border: #313a48;
+      --border-strong: #3e4858;
+      --text-primary: #f4f6f8;
+      --text-secondary: #c5cdd8;
+      --text-tertiary: #8b95a5;
+      --accent: #5b86f8;
+      --accent-hover: #8aabff;
+      --accent-soft: #243656;
+      --on-accent: #fff;
+      --ungrouped: #98a1b0;
+      --g-office: #3b6cf6;
+      --g-new: #9b6cf6;
+      --nav-w: 200px;
+      --header-h: 48px;
+      --footer-h: 36px;
+      --radius-float: 14px;
+      --radius-card: 10px;
+      --radius-ctl: 8px;
+      --cell: 80px;
+      --icon: 40px;
+      --panel-w: 960px;
+      --panel-h: 640px;
+      --font: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse 120% 80% at 50% -20%, #2a3550 0%, transparent 55%),
+        linear-gradient(160deg, #0e1118 0%, #1a2030 40%, #12161f 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 32px;
+      color: var(--text-primary);
+    }
+
+    .proto-bar {
+      width: min(var(--panel-w), 100%);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .proto-bar strong { color: var(--text-secondary); font-weight: 600; }
+
+    .proto-bar button {
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: var(--radius-ctl);
+      border: 1px solid var(--border);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .proto-bar button:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .proto-bar button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-hover); }
+
+    .panel {
+      width: var(--panel-w);
+      max-width: 100%;
+      height: var(--panel-h);
+      border-radius: var(--radius-float);
+      border: 1px solid var(--border);
+      background: var(--bg-canvas);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+      display: grid;
+      grid-template-rows: var(--header-h) 1fr var(--footer-h);
+      overflow: hidden;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg-float) 72%, transparent);
+    }
+
+    .brand {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      white-space: nowrap;
+    }
+
+    .context {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .context .bar {
+      width: 3px;
+      height: 14px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .context h1 {
+      font-size: 16px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .context .meta {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .search {
+      width: 168px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: var(--radius-ctl);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-input);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .btn {
+      font-family: inherit;
+      font-size: 13px;
+      height: 28px;
+      padding: 0 12px;
+      border-radius: var(--radius-ctl);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .btn-primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: none;
+      background: transparent;
+      color: var(--text-tertiary);
+      border-radius: var(--radius-ctl);
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    .body {
+      display: grid;
+      grid-template-columns: var(--nav-w) 1fr;
+      min-height: 0;
+    }
+
+    .nav {
+      border-right: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg-float) 55%, transparent);
+      padding: 12px 8px 8px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .nav-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      padding: 0 10px 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 34px;
+      margin-top: 4px;
+      padding: 0 10px 0 8px;
+      border-radius: var(--radius-ctl);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text-secondary);
+      text-align: left;
+    }
+
+    .nav-item:hover { background: var(--bg-hover); }
+
+    .nav-item.active {
+      background: var(--accent-soft);
+      color: var(--accent-hover);
+      font-weight: 600;
+    }
+
+    .nav-item .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .nav-item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .nav-item .count {
+      font-size: 11px;
+      color: var(--text-tertiary);
+      font-weight: 400;
+    }
+
+    .nav-item.active .count { color: var(--text-tertiary); }
+
+    .nav-footer {
+      margin-top: auto;
+      padding-top: 8px;
+    }
+
+    .nav-footer .btn {
+      width: 100%;
+      height: 34px;
+    }
+
+    .main {
+      overflow: auto;
+      padding: 8px;
+    }
+
+  /* —— 聚焦视图（单组） —— */
+    .focus-empty {
+      height: 100%;
+      min-height: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .drop-zone {
+      width: min(420px, 100%);
+      padding: 28px 24px;
+      border: 1px dashed var(--border-strong);
+      border-style: dashed;
+      border-radius: var(--radius-card);
+      background: color-mix(in srgb, var(--bg-float) 40%, transparent);
+      margin-bottom: 20px;
+    }
+
+    .drop-zone .glyph {
+      font-size: 28px;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+
+    .focus-empty p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-width: 360px;
+    }
+
+    .focus-empty .hint {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .focus-empty .hint em {
+      font-style: normal;
+      color: var(--accent-hover);
+    }
+
+    .grid-wrap {
+      padding: 8px 8px 16px;
+    }
+
+    .grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .cell {
+      width: var(--cell);
+      height: var(--cell);
+      border-radius: var(--radius-ctl);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 6px 4px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .cell:hover { background: var(--bg-hover); }
+
+    .cell .ic {
+      width: var(--icon);
+      height: var(--icon);
+      border-radius: 10px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      display: grid;
+      place-items: center;
+      font-size: 18px;
+      margin-bottom: 6px;
+    }
+
+    .cell span {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-align: center;
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    body.edit .cell::before {
+      content: "−";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      font-size: 14px;
+      line-height: 16px;
+      text-align: center;
+      background: var(--bg-float);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text-secondary);
+    }
+
+    body.edit .cell-add {
+      border: 1px dashed var(--border-strong);
+      background: transparent;
+    }
+
+  /* —— 全部视图：卡片栈 —— */
+    .card {
+      background: color-mix(in srgb, var(--bg-float) 70%, transparent);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 16px;
+      margin: 8px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .card-head .bar { width: 3px; height: 14px; border-radius: 2px; }
+
+    .card-head h2 {
+      font-size: 13px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .card-head .n {
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      border-top: 1px solid var(--border);
+      background: color-mix(in srgb, var(--bg-float) 72%, transparent);
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    .footer .done {
+      margin-left: auto;
+      display: none;
+    }
+
+    body.edit .footer .done { display: inline-flex; }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 1000px) {
+      .panel { height: min(var(--panel-h), 85vh); }
+      .search { width: 120px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="proto-bar">
+    <strong>原型控制台</strong>
+  <span>点击左侧分组切换「聚焦 / 全部」；「编辑」仅切换视觉态，底栏不再放 + 添加。</span>
+    <button type="button" data-nav="g-new" class="on">空分组「新分组」</button>
+    <button type="button" data-nav="ungrouped">有内容「未分组」</button>
+    <button type="button" data-nav="all">全部（多卡片）</button>
+  </div>
+
+  <div class="panel" role="application" aria-label="DeskKit 快捷启动">
+    <header class="header">
+      <span class="brand">DeskKit</span>
+      <div class="context" id="context">
+        <span class="bar" id="ctxBar" style="background: var(--g-new)"></span>
+        <h1 id="ctxTitle">新分组</h1>
+        <span class="meta" id="ctxMeta">· 0 项</span>
+      </div>
+      <div class="header-actions">
+        <input class="search" type="search" placeholder="搜索快捷项" aria-label="搜索" />
+        <button type="button" class="btn btn-primary" id="btnAdd">+ 添加</button>
+        <button type="button" class="btn" id="btnEdit">✎ 编辑</button>
+        <button type="button" class="icon-btn" title="设置">⚙</button>
+        <button type="button" class="icon-btn" title="关闭">✕</button>
+      </div>
+    </header>
+
+    <div class="body">
+      <nav class="nav" aria-label="分组">
+        <div class="nav-label">分组</div>
+        <button type="button" class="nav-item" data-id="all">
+          <span class="name">全部</span>
+          <span class="count">3</span>
+        </button>
+        <button type="button" class="nav-item" data-id="fav">
+          <span class="dot" style="background: var(--accent)"></span>
+          <span class="name">收藏</span>
+          <span class="count">0</span>
+        </button>
+        <button type="button" class="nav-item" data-id="ungrouped">
+          <span class="dot" style="background: var(--ungrouped)"></span>
+          <span class="name">未分组</span>
+          <span class="count">3</span>
+        </button>
+        <button type="button" class="nav-item active" data-id="g-new">
+          <span class="dot" style="background: var(--g-new)"></span>
+          <span class="name">新分组</span>
+          <span class="count">0</span>
+        </button>
+        <div class="nav-footer">
+          <button type="button" class="btn">新建分组</button>
+        </div>
+      </nav>
+
+      <main class="main" id="main"></main>
+    </div>
+
+    <footer class="footer">
+      <span id="footText">拖入即可添加 · Alt+Shift+Space 唤出 · 共 3 项</span>
+      <button type="button" class="btn btn-primary done" id="btnDone">✓ 完成</button>
+    </footer>
+  </div>
+
+  <script>
+    const items = {
+      ungrouped: [
+        { title: "Visual Studio", emoji: "💠" },
+        { title: "资源管理器", emoji: "📁" },
+        { title: "GitHub", emoji: "🌐" },
+      ],
+    };
+
+    const groups = {
+      all: { title: "全部", bar: null, count: 3, mode: "stack" },
+      fav: { title: "收藏", bar: "var(--accent)", count: 0, mode: "focus" },
+      ungrouped: { title: "未分组", bar: "var(--ungrouped)", count: 3, mode: "focus", items: "ungrouped" },
+      "g-new": { title: "新分组", bar: "var(--g-new)", count: 0, mode: "focus", empty: true },
+    };
+
+    let nav = "g-new";
+    let edit = false;
+
+    const main = document.getElementById("main");
+    const ctxBar = document.getElementById("ctxBar");
+    const ctxTitle = document.getElementById("ctxTitle");
+    const ctxMeta = document.getElementById("ctxMeta");
+
+    function renderCells(list) {
+      const cells = list
+        .map(
+          (it) => `
+        <div class="cell" tabindex="0">
+          <div class="ic">${it.emoji}</div>
+          <span>${it.title}</span>
+        </div>`
+        )
+        .join("");
+      const add = edit
+        ? `<div class="cell cell-add" tabindex="0"><div class="ic">+</div><span>添加</span></div>`
+        : "";
+      return `<div class="grid-wrap"><div class="grid">${cells}${add}</div></div>`;
+    }
+
+    function renderStack() {
+      return `
+        <article class="card">
+          <header class="card-head">
+            <span class="bar" style="background: var(--ungrouped)"></span>
+            <h2>未分组</h2>
+            <span class="n">3 项</span>
+          </header>
+          <div class="grid">${items.ungrouped
+            .map(
+              (it) => `
+            <div class="cell"><div class="ic">${it.emoji}</div><span>${it.title}</span></div>`
+            )
+            .join("")}</div>
+        </article>
+        <article class="card">
+          <header class="card-head">
+            <span class="bar" style="background: var(--g-new)"></span>
+            <h2>新分组</h2>
+            <span class="n">0 项</span>
+          </header>
+          <p style="text-align:center;color:var(--text-tertiary);font-size:13px;padding:24px 0">此分组为空</p>
+        </article>`;
+    }
+
+    function renderFocus(g) {
+      if (g.empty || g.count === 0) {
+        if (g.items && items[g.items]?.length) {
+          return renderCells(items[g.items]);
+        }
+        return `
+          <div class="focus-empty">
+            <div class="drop-zone">
+              <div class="glyph">↓</div>
+              <p style="color:var(--text-tertiary);font-size:12px">拖入到此处</p>
+            </div>
+            <p>把应用、文件或文件夹拖进来</p>
+            <p class="hint">或使用顶栏 <em>+ 添加</em></p>
+          </div>`;
+      }
+      return renderCells(items[g.items] || []);
+    }
+
+    function setNav(id) {
+      nav = id;
+      document.querySelectorAll(".nav-item").forEach((el) => {
+        el.classList.toggle("active", el.dataset.id === id);
+      });
+      document.querySelectorAll(".proto-bar button[data-nav]").forEach((el) => {
+        el.classList.toggle("on", el.dataset.nav === id);
+      });
+      const g = groups[id];
+      ctxTitle.textContent = g.title;
+      ctxMeta.textContent = `· ${g.count} 项`;
+      ctxBar.style.display = g.bar ? "block" : "none";
+      if (g.bar) ctxBar.style.background = g.bar;
+
+      main.innerHTML = g.mode === "stack" ? renderStack() : renderFocus(g);
+    }
+
+    document.querySelectorAll(".nav-item").forEach((btn) => {
+      btn.addEventListener("click", () => setNav(btn.dataset.id));
+    });
+
+    document.querySelectorAll(".proto-bar button[data-nav]").forEach((btn) => {
+      btn.addEventListener("click", () => setNav(btn.dataset.nav));
+    });
+
+    function toggleEdit() {
+      edit = !edit;
+      document.body.classList.toggle("edit", edit);
+      const b = document.getElementById("btnEdit");
+      b.textContent = edit ? "✓ 完成" : "✎ 编辑";
+      b.classList.toggle("btn-primary", edit);
+      setNav(nav);
+    }
+
+    document.getElementById("btnEdit").addEventListener("click", toggleEdit);
+    document.getElementById("btnDone").addEventListener("click", toggleEdit);
+
+    setNav(nav);
+  </script>
+</body>
+</html>

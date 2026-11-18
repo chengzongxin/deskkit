@@ -65,10 +65,10 @@ final class FixtureTests: XCTestCase {
         var groups = (groupsFixture["document"]?["groups"]?.values ?? []).map {
             GroupRecord(id: $0["id"]?.string ?? "", name: $0["name"]?.string ?? "", color: $0["color"]?.string ?? "", itemIds: $0["itemIds"]?.strings() ?? [])
         }
-        let items = (groupsFixture["document"]?["items"]?.values ?? []).map {
+        var items = (groupsFixture["document"]?["items"]?.values ?? []).map {
             ItemRecord(id: $0["id"]?.string ?? "", title: $0["title"]?.string ?? "")
         }
-        let deleted = GroupEditor.delete(groups: &groups, items: items, groupId: groupsFixture["deleteGroupId"]?.string ?? "", ungroupedId: "ungrouped", ungroupedName: "未分组")
+        let deleted = GroupEditor.delete(groups: &groups, items: &items, groupId: groupsFixture["deleteGroupId"]?.string ?? "", ungroupedId: "ungrouped", ungroupedName: "未分组")
         XCTAssertTrue(deleted.ok)
         XCTAssertEqual(groupsFixture["expectRemainingGroupIds"]?.strings(), groups.map(\.id))
         XCTAssertEqual(groupsFixture["expectItemIdsInUngrouped"]?.strings(), groups.first { $0.id == "ungrouped" }?.itemIds)

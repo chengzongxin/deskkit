@@ -99,7 +99,7 @@ public class FixtureTests
             item.GetProperty("itemIds").EnumerateArray().Select(id => id.GetString() ?? ""))).ToList();
         var items = groupsFixture.GetProperty("document").GetProperty("items").EnumerateArray().Select(item => new ItemRecord(
             item.GetProperty("id").GetString() ?? "",
-            item.GetProperty("title").GetString() ?? "")).ToArray();
+            item.GetProperty("title").GetString() ?? "")).ToList();
         var deleted = GroupEditor.Delete(groups, items, groupsFixture.GetProperty("deleteGroupId").GetString() ?? "", "ungrouped", "未分组");
         Assert.True(deleted.Ok);
         Assert.Equal(Strings(groupsFixture, "expectRemainingGroupIds"), groups.Select(group => group.Id).ToArray());

@@ -1,7 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using DeskKit.Core;
 using DeskKit.Platform;
 using Microsoft.Win32;
@@ -18,6 +20,8 @@ public sealed class GroupsWindow : Window
     readonly HashSet<string> folded = new(StringComparer.Ordinal);
     bool rendering;
     bool resizing;
+    bool navInsertAfter;
+    Border? navDropHint;
     Border? dropVeil;
     TextBlock? dropTitle;
     Border? dropHighlight;
@@ -66,6 +70,11 @@ public sealed class GroupsWindow : Window
 
     public void Render()
     {
+        if (nav == "fav")
+        {
+            nav = "all";
+        }
+
         rendering = true;
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
@@ -74,8 +83,8 @@ public sealed class GroupsWindow : Window
 
         var headerDock = new DockPanel { Margin = new Thickness(16, 0, 8, 0) };
         EnableDrag(headerDock);
-        var close = C.IconButton(Glyph.Close, Hide);
-        var gear = C.IconButton(Glyph.Gear, () => shell.ShowSettings());
+        var close = PanelIconButton(Glyph.Close, Hide);
+        var gear = PanelIconButton(Glyph.Gear, () => shell.ShowSettings());
         DockPanel.SetDock(close, Dock.Right);
         DockPanel.SetDock(gear, Dock.Right);
         headerDock.Children.Add(close);
@@ -104,16 +113,18 @@ public sealed class GroupsWindow : Window
         };
         DockPanel.SetDock(box, Dock.Right);
         headerDock.Children.Add(box);
-        var editButton = C.Soft(edit ? "✓ 完成" : "✎ 编辑", () => { edit = !edit; Render(); });
-        var addTop = C.Soft("+ 添加", AddShortcut);
+        var editButton = edit
+            ? C.Primary("✓ 完成", () => { edit = !edit; Render(); })
+            : C.Soft("✎ 编辑", () => { edit = !edit; Render(); });
+        var addTop = C.Primary(S.Store.Text("empty.panelAction"), AddShortcut);
         DockPanel.SetDock(editButton, Dock.Right);
         DockPanel.SetDock(addTop, Dock.Right);
         headerDock.Children.Add(editButton);
         headerDock.Children.Add(addTop);
-        headerDock.Children.Add(C.Label("DeskKit 快捷启动", 16, FontWeights.SemiBold, "text.primary"));
+        headerDock.Children.Add(BuildHeaderContext());
         var header = new Border
         {
-            Background = C.Glass("bg.float", 0.38),
+            Background = C.Glass("bg.float", 0.72),
             BorderBrush = C.Brush("border.default"),
             BorderThickness = new Thickness(0, 0, 0, 1),
             Child = headerDock
@@ -124,26 +135,43 @@ public sealed class GroupsWindow : Window
         var body = new Grid();
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(S.Store.Layout("windows", "navWidth")) });
         body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var navList = new StackPanel { Margin = new Thickness(8, 12, 8, 0) };
-        EnableDrag(navList);
-        navList.Children.Add(C.Label("分组", 11, FontWeights.SemiBold, "text.tertiary"));
+        var navBody = new DockPanel { Margin = new Thickness(0, 12, 0, 8) };
+        EnableDrag(navBody);
+        var newGroup = C.Soft("新建分组", AddGroup);
+        newGroup.Height = 34;
+        newGroup.Margin = new Thickness(8, 8, 8, 0);
+        newGroup.HorizontalAlignment = HorizontalAlignment.Stretch;
+        DockPanel.SetDock(newGroup, Dock.Bottom);
+        navBody.Children.Add(newGroup);
+        var navList = new StackPanel { Margin = new Thickness(8, 0, 8, 0) };
+        var navHead = C.Label("分组", 11, FontWeights.SemiBold, "text.tertiary");
+        navHead.Margin = new Thickness(2, 0, 0, 8);
+        navList.Children.Add(navHead);
         Nav(navList, "all", "全部", S.Library.Items.Count, null);
-        Nav(navList, "fav", "收藏", 0, S.Store.Color("accent"));
-        foreach (var group in S.Library.Groups)
+        foreach (var group in S.Library.Groups.Where(group => group.Id != "fav"))
         {
             Nav(navList, group.Id, group.Name, group.ItemIds.Count, group.Color);
         }
 
-        navList.Children.Add(C.Soft("新建分组", AddGroup));
-        var nav = new Border
+        var navScroll = new ScrollViewer
         {
-            Background = C.Glass("bg.float", 0.32),
+            Content = navList,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Background = Brushes.Transparent,
+            AllowDrop = true
+        };
+        navScroll.DragOver += NavScrollDragOver;
+        navScroll.Drop += NavScrollDrop;
+        navBody.Children.Add(navScroll);
+        var navPane = new Border
+        {
+            Background = C.Glass("bg.float", 0.55),
             BorderBrush = C.Brush("border.default"),
             BorderThickness = new Thickness(0, 0, 1, 0),
-            Child = navList
+            Child = navBody
         };
-        Grid.SetColumn(nav, 0);
-        body.Children.Add(nav);
+        Grid.SetColumn(navPane, 0);
+        body.Children.Add(navPane);
         var canvas = new StackPanel { Margin = new Thickness(8) };
         DrawGroups(canvas);
         var scroll = new ScrollViewer
@@ -157,28 +185,35 @@ public sealed class GroupsWindow : Window
         Grid.SetRow(body, 1);
         root.Children.Add(body);
 
-        var footGrid = new Grid();
-        footGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(S.Store.Layout("windows", "navWidth")) });
-        footGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        footGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var add = edit ? C.Primary("✓ 完成", () => { edit = !edit; Render(); }) : C.Soft(S.Store.Text("empty.panelAction"), AddShortcut);
-        add.Margin = new Thickness(8, 0, 16, 0);
-        add.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(add, 2);
-        var tip = C.Label($"把应用、文件或文件夹拖到这里即可添加 · {shell.PanelHotkeyText()} 唤出 · 共 {S.Library.Items.Count} 项", 12, FontWeights.Normal, "text.tertiary");
+        var footDock = new DockPanel { Margin = new Thickness(16, 0, 16, 0) };
+        if (edit)
+        {
+            var done = C.Primary("✓ 完成", () => { edit = false; Render(); });
+            done.Margin = new Thickness(8, 0, 0, 0);
+            done.VerticalAlignment = VerticalAlignment.Center;
+            DockPanel.SetDock(done, Dock.Right);
+            footDock.Children.Add(done);
+        }
+
+        var tip = C.Label(
+            S.Store.Text("panel.footer", new Dictionary<string, string>
+            {
+                ["hotkey"] = shell.PanelHotkeyText(),
+                ["count"] = S.Library.Items.Count.ToString()
+            }),
+            12,
+            FontWeights.Normal,
+            "text.tertiary");
         tip.TextTrimming = TextTrimming.CharacterEllipsis;
         tip.VerticalAlignment = VerticalAlignment.Center;
-        tip.Margin = new Thickness(16, 0, 8, 0);
-        Grid.SetColumn(tip, 1);
-        footGrid.Children.Add(tip);
-        footGrid.Children.Add(add);
-        EnableDrag(footGrid);
+        footDock.Children.Add(tip);
+        EnableDrag(footDock);
         var foot = new Border
         {
-            Background = C.Glass("bg.float", 0.38),
+            Background = C.Glass("bg.float", 0.72),
             BorderBrush = C.Brush("border.default"),
             BorderThickness = new Thickness(0, 1, 0, 0),
-            Child = footGrid
+            Child = footDock
         };
         Grid.SetRow(foot, 2);
         root.Children.Add(foot);
@@ -216,175 +251,576 @@ public sealed class GroupsWindow : Window
     void Nav(Panel nav, string id, string title, int count, string? color)
     {
         var on = navId(id);
+        var library = IsLibraryNavId(id);
         var row = new Border
         {
+            Name = id,
             Height = 34,
             Margin = new Thickness(0, 4, 0, 0),
             CornerRadius = new CornerRadius(8),
             Background = on ? C.Brush("accent.soft") : Brushes.Transparent,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            AllowDrop = library
         };
         var grid = new DockPanel { Margin = new Thickness(10, 0, 8, 0) };
         var number = C.Label(count.ToString(), 11, FontWeights.Normal, "text.tertiary");
         DockPanel.SetDock(number, Dock.Right);
         grid.Children.Add(number);
+        if (library)
+        {
+            var grip = new Border
+            {
+                Width = 18,
+                ToolTip = "拖动排序",
+                Background = Brushes.Transparent,
+                Cursor = Cursors.SizeAll,
+                Tag = "nav-grip",
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = C.Label("⋮⋮", 11, FontWeights.Normal, "text.tertiary")
+            };
+            grip.MouseLeftButtonDown += (_, e) => StartNavReorderDrag(row, id, e);
+            DockPanel.SetDock(grip, Dock.Right);
+            grid.Children.Add(grip);
+        }
         if (color != null)
         {
-            var dot = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(Chrome.Paint(color)), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            var dot = new Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(Chrome.Paint(color)), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
             DockPanel.SetDock(dot, Dock.Left);
             grid.Children.Add(dot);
         }
+        else
+        {
+            var align = new Border { Width = 14, VerticalAlignment = VerticalAlignment.Center };
+            DockPanel.SetDock(align, Dock.Left);
+            grid.Children.Add(align);
+        }
 
-        grid.Children.Add(C.Label(title, 13, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "accent.hover" : "text.secondary"));
+        if (library && renaming == id)
+        {
+            var field = new TextBox
+            {
+                Text = title,
+                Height = 28,
+                MaxWidth = 140,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 13,
+                Background = C.Brush("bg.input"),
+                Foreground = C.Brush("text.primary"),
+                BorderBrush = C.Brush("border.strong"),
+                Padding = new Thickness(6, 0, 6, 0)
+            };
+            field.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Escape)
+                {
+                    renaming = null;
+                    Render();
+                    e.Handled = true;
+                    return;
+                }
+
+                if (e.Key != Key.Enter)
+                {
+                    return;
+                }
+
+                CommitRename(id, field.Text);
+                e.Handled = true;
+            };
+            field.LostFocus += (_, _) => CommitRename(id, field.Text);
+            field.Loaded += (_, _) => field.Focus();
+            grid.Children.Add(field);
+        }
+        else
+        {
+            var name = C.Label(title, 13, on ? FontWeights.SemiBold : FontWeights.Normal, on ? "accent.hover" : "text.secondary");
+            grid.Children.Add(name);
+        }
+
         row.Tag = "nav";
         row.Child = grid;
-        row.MouseLeftButtonUp += (_, _) => { this.nav = id; Render(); };
+        if (library)
+        {
+            var menu = new ContextMenu();
+            var renameItem = new MenuItem { Header = S.Store.Text("group.rename") };
+            renameItem.Click += (_, _) => { renaming = id; Render(); };
+            menu.Items.Add(renameItem);
+            if (CanDeleteGroup(id))
+            {
+                var deleteItem = new MenuItem { Header = S.Store.Text("group.delete") };
+                deleteItem.Click += (_, _) => ConfirmDeleteGroup(id);
+                menu.Items.Add(deleteItem);
+            }
+
+            row.ContextMenu = menu;
+            row.DragOver += NavDragOver;
+            row.Drop += NavRowDrop;
+            row.DragLeave += (_, _) => ClearNavDropHint();
+            row.MouseLeftButtonUp += (_, e) => SelectNavUnlessGrip(id, e);
+        }
+        else
+        {
+            row.MouseLeftButtonUp += (_, _) => { this.nav = id; Render(); };
+        }
+
         nav.Children.Add(row);
+    }
+
+    static bool IsLibraryNavId(string id) => id is not "all";
+
+    void SelectNavUnlessGrip(string id, MouseButtonEventArgs e)
+    {
+        if (IsNavGrip(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        nav = id;
+        Render();
+    }
+
+    static bool IsNavGrip(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (source is FrameworkElement element && element.Tag as string == "nav-grip")
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    void StartNavReorderDrag(Border row, string id, MouseButtonEventArgs e)
+    {
+        row.Opacity = 0.5;
+        var data = new System.Windows.DataObject("deskkit-group", id);
+        try
+        {
+            DragDrop.DoDragDrop(row, data, DragDropEffects.Move);
+        }
+        catch (InvalidOperationException)
+        {
+            // 拖放被打断时忽略
+        }
+
+        row.Opacity = 1;
+        ClearNavDropHint();
+        e.Handled = true;
+    }
+
+    void NavRowDrop(object sender, DragEventArgs e)
+    {
+        if (sender is not Border row || !IsLibraryNavId(row.Name))
+        {
+            return;
+        }
+
+        var y = e.GetPosition(row).Y;
+        ApplyNavReorder(e, row.Name, y > row.ActualHeight / 2);
+        e.Handled = true;
+    }
+
+    void NavDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("deskkit-group"))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        if (sender is not Border row || !IsLibraryNavId(row.Name))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+        var y = e.GetPosition(row).Y;
+        ShowNavInsertHint(row, y > row.ActualHeight / 2);
+    }
+
+    void NavScrollDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("deskkit-group"))
+        {
+            e.Effects = DragDropEffects.None;
+            return;
+        }
+
+        e.Effects = DragDropEffects.Move;
+        e.Handled = true;
+        if (sender is not ScrollViewer scroll)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(scroll);
+        if (TryFindNavRowAt(scroll, point, out var row, out var after))
+        {
+            ShowNavInsertHint(row, after);
+        }
+        else
+        {
+            ClearNavDropHint();
+        }
+    }
+
+    void NavScrollDrop(object sender, DragEventArgs e)
+    {
+        if (sender is not ScrollViewer scroll)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(scroll);
+        if (!TryFindNavRowAt(scroll, point, out var row, out var after))
+        {
+            return;
+        }
+
+        ApplyNavReorder(e, row.Name, after);
+        e.Handled = true;
+    }
+
+    bool TryFindNavRowAt(ScrollViewer scroll, Point point, out Border row, out bool after)
+    {
+        row = null!;
+        after = false;
+        if (scroll.Content is not StackPanel list)
+        {
+            return false;
+        }
+
+        foreach (var child in list.Children.OfType<Border>())
+        {
+            if (!IsLibraryNavId(child.Name))
+            {
+                continue;
+            }
+
+            var topLeft = child.TranslatePoint(new Point(0, 0), scroll);
+            var bottom = topLeft.Y + child.ActualHeight;
+            if (point.Y < topLeft.Y || point.Y > bottom)
+            {
+                continue;
+            }
+
+            row = child;
+            after = point.Y > topLeft.Y + child.ActualHeight / 2;
+            return true;
+        }
+
+        return false;
+    }
+
+    void ApplyNavReorder(DragEventArgs e, string targetId, bool placeAfter)
+    {
+        if (e.Data.GetData("deskkit-group") is not string source || !IsLibraryNavId(source) || !IsLibraryNavId(targetId) || source == targetId)
+        {
+            return;
+        }
+
+        S.ReorderGroup(source, targetId, placeAfter);
+        ClearNavDropHint();
+        Render();
+    }
+
+    void ShowNavInsertHint(Border row, bool after)
+    {
+        if (navDropHint == row && navInsertAfter == after)
+        {
+            return;
+        }
+
+        ClearNavDropHint();
+        navDropHint = row;
+        navInsertAfter = after;
+        row.BorderBrush = C.Brush("accent");
+        row.BorderThickness = after ? new Thickness(0, 0, 0, 2) : new Thickness(0, 2, 0, 0);
+        if (!navId(row.Name))
+        {
+            row.Background = C.Brush("bg.hover");
+        }
+    }
+
+    void ClearNavDropHint()
+    {
+        if (navDropHint == null)
+        {
+            return;
+        }
+
+        var id = navDropHint.Name;
+        navDropHint.BorderThickness = new Thickness(0);
+        navDropHint.BorderBrush = C.Brush("border.default");
+        navDropHint.Background = navId(id) ? C.Brush("accent.soft") : Brushes.Transparent;
+        navDropHint = null;
     }
 
     bool navId(string id) => nav == id;
 
+    UIElement BuildHeaderContext()
+    {
+        var ctx = NavContext();
+        var row = new DockPanel { VerticalAlignment = VerticalAlignment.Center };
+        var brand = C.Label("DeskKit", 13, FontWeights.SemiBold, "text.tertiary");
+        DockPanel.SetDock(brand, Dock.Left);
+        row.Children.Add(brand);
+        var inner = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        if (ctx.Color != null)
+        {
+            inner.Children.Add(new Border
+            {
+                Width = 3,
+                Height = 14,
+                Background = new SolidColorBrush(Chrome.Paint(ctx.Color)),
+                CornerRadius = new CornerRadius(2),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
+
+        var title = C.Label(ctx.Title, 16, FontWeights.SemiBold, "text.primary");
+        title.TextTrimming = TextTrimming.CharacterEllipsis;
+        title.VerticalAlignment = VerticalAlignment.Center;
+        inner.Children.Add(title);
+        var meta = C.Label($"· {ctx.Count} 项", 12, FontWeights.Normal, "text.tertiary");
+        meta.Margin = new Thickness(8, 0, 0, 0);
+        meta.VerticalAlignment = VerticalAlignment.Center;
+        inner.Children.Add(meta);
+        row.Children.Add(inner);
+        return row;
+    }
+
+    Button PanelIconButton(string glyph, Action click)
+    {
+        var button = C.IconButton(glyph, click);
+        button.Width = 32;
+        button.Height = 32;
+        return button;
+    }
+
+    TextBlock PanelHintLabel()
+    {
+        var hint = new TextBlock
+        {
+            FontSize = 12,
+            Foreground = C.Brush("text.tertiary"),
+            TextAlignment = TextAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 8, 0, 0),
+            TextWrapping = TextWrapping.Wrap
+        };
+        hint.Inlines.Add(new Run(S.Store.Text("empty.panelHintBefore")));
+        hint.Inlines.Add(new Run(S.Store.Text("empty.panelHintAction")) { Foreground = C.Brush("accent.hover") });
+        return hint;
+    }
+
+    FrameworkElement DashedDropZone(UIElement content)
+    {
+        var host = new Grid
+        {
+            MinWidth = 280,
+            MaxWidth = 420,
+            Margin = new Thickness(0, 0, 0, 20)
+        };
+        host.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            RadiusX = 10,
+            RadiusY = 10,
+            Stroke = C.Brush("border.strong"),
+            StrokeThickness = 1,
+            StrokeDashArray = new DoubleCollection { 4, 3 },
+            Fill = C.Glass("bg.float", 0.4)
+        });
+        var pad = new Border { Padding = new Thickness(24, 22, 24, 22), Background = Brushes.Transparent };
+        pad.Child = content;
+        host.Children.Add(pad);
+        return host;
+    }
+
+    FrameworkElement DashedCellFrame(double width, double height)
+    {
+        var grid = new Grid { Width = width, Height = height };
+        grid.Children.Add(new System.Windows.Shapes.Rectangle
+        {
+            RadiusX = 8,
+            RadiusY = 8,
+            Stroke = C.Brush("border.strong"),
+            StrokeThickness = 1,
+            StrokeDashArray = new DoubleCollection { 4, 3 },
+            Fill = Brushes.Transparent
+        });
+        return grid;
+    }
+
+    (string Title, int Count, string? Color) NavContext() => nav switch
+    {
+        "all" => ("全部", S.Library.Items.Count, null),
+        _ => S.Library.Groups.FirstOrDefault(group => group.Id == nav) is { } group
+            ? (group.Name, group.ItemIds.Count, group.Color)
+            : ("全部", S.Library.Items.Count, null)
+    };
+
+    List<Shortcut> ItemsFor(Group group) => group.ItemIds
+        .Select(id => S.Library.Items.FirstOrDefault(item => item.Id == id))
+        .Where(item => item != null)
+        .Cast<Shortcut>()
+        .Where(item => search.Length == 0 || item.Title.Contains(search, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    void AppendFocusEmpty(StackPanel stack)
+    {
+        var drop = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+        var glyph = C.Label("↓", 28, FontWeights.Normal, "text.tertiary");
+        glyph.HorizontalAlignment = HorizontalAlignment.Center;
+        drop.Children.Add(glyph);
+        var sub = C.Label(S.Store.Text("empty.panelDrop"), 12, FontWeights.Normal, "text.tertiary");
+        sub.HorizontalAlignment = HorizontalAlignment.Center;
+        sub.Margin = new Thickness(0, 8, 0, 0);
+        drop.Children.Add(sub);
+        stack.Children.Add(DashedDropZone(drop));
+        var empty = C.Label(S.Store.Text("empty.panel"), 13, FontWeights.Normal, "text.secondary");
+        empty.HorizontalAlignment = HorizontalAlignment.Center;
+        empty.TextAlignment = TextAlignment.Center;
+        empty.MaxWidth = 360;
+        empty.TextWrapping = TextWrapping.Wrap;
+        stack.Children.Add(empty);
+        stack.Children.Add(PanelHintLabel());
+    }
+
+    UIElement ItemGrid(IReadOnlyList<Shortcut> items)
+    {
+        var wrap = new WrapPanel { Margin = new Thickness(0) };
+        foreach (var item in items)
+        {
+            wrap.Children.Add(Cell(item));
+        }
+
+        if (edit)
+        {
+            var add = new Grid { Width = 80, Height = 80, Margin = new Thickness(4), Cursor = Cursors.Hand };
+            add.Children.Add(DashedCellFrame(80, 80));
+            var plus = C.Label("添加", 12, FontWeights.Normal, "text.tertiary");
+            plus.HorizontalAlignment = HorizontalAlignment.Center;
+            plus.VerticalAlignment = VerticalAlignment.Center;
+            add.Children.Add(plus);
+            add.MouseLeftButtonUp += (_, _) => AddShortcut();
+            wrap.Children.Add(add);
+        }
+
+        return new Border { Padding = new Thickness(8, 8, 8, 16), Child = wrap };
+    }
+
     void DrawGroups(Panel canvas)
     {
-        IEnumerable<Group> groups = nav switch
+        if (nav == "all")
         {
-            "all" => S.Library.Groups,
-            "fav" => [new Group { Id = "fav", Name = "收藏", Color = S.Store.Color("accent"), ItemIds = [] }],
-            _ => S.Library.Groups.Where(group => group.Id == nav)
-        };
-        foreach (var group in groups)
-        {
-            var items = group.ItemIds.Select(id => S.Library.Items.FirstOrDefault(item => item.Id == id)).Where(item => item != null).Cast<Shortcut>()
-                .Where(item => search.Length == 0 || item.Title.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
-            var isFolded = folded.Contains(group.Id);
-            var card = new Border
+            foreach (var group in S.Library.Groups.Where(group => group.Id != "fav"))
             {
-                Background = C.Glass("bg.float", 0.42),
-                BorderBrush = C.Brush("border.default"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(16),
-                Margin = new Thickness(8)
-            };
-            var stack = new StackPanel();
-            var head = new DockPanel();
-            if (group.Id != "fav")
-            {
-                var fold = C.IconButton(isFolded ? Glyph.Right : Glyph.Down, () =>
-                {
-                    if (!folded.Add(group.Id)) folded.Remove(group.Id);
-                    Render();
-                });
-                DockPanel.SetDock(fold, Dock.Right);
-                head.Children.Add(fold);
-                var rename = C.IconButton(Glyph.Edit, () => { renaming = group.Id; Render(); });
-                rename.Margin = new Thickness(0, 0, 4, 0);
-                DockPanel.SetDock(rename, Dock.Right);
-                head.Children.Add(rename);
+                DrawGroupCard(canvas, group);
             }
 
-            var bar = new Border { Width = 3, Height = 14, Background = new SolidColorBrush(Chrome.Paint(group.Color)), CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
-            DockPanel.SetDock(bar, Dock.Left);
-            head.Children.Add(bar);
-            if (renaming == group.Id && group.Id != "fav")
+            return;
+        }
+
+        foreach (var group in S.Library.Groups.Where(group => group.Id == nav))
+        {
+            DrawFocusGroup(canvas, group);
+        }
+    }
+
+    void DrawFocusGroup(Panel canvas, Group group)
+    {
+        var items = ItemsFor(group);
+        if (items.Count == 0 && !edit)
+        {
+            var host = new Grid { MinHeight = 420, Margin = new Thickness(0) };
+            var stack = new StackPanel
             {
-                var titleRow = new DockPanel { LastChildFill = true, VerticalAlignment = VerticalAlignment.Center };
-                var count = C.Label($"{items.Count} 项", 11, FontWeights.Normal, "text.tertiary");
-                count.VerticalAlignment = VerticalAlignment.Center;
-                count.Margin = new Thickness(8, 0, 0, 0);
-                DockPanel.SetDock(count, Dock.Right);
-                titleRow.Children.Add(count);
-                var field = new TextBox
-                {
-                    Text = group.Name,
-                    MaxWidth = 180,
-                    Height = 24,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    FontWeight = FontWeights.SemiBold,
-                    FontSize = 13,
-                    Background = C.Brush("bg.input"),
-                    Foreground = C.Brush("text.primary"),
-                    BorderBrush = C.Brush("border.strong"),
-                    Padding = new Thickness(6, 0, 6, 0)
-                };
-                var groupId = group.Id;
-                field.KeyDown += (_, e) =>
-                {
-                    if (e.Key == Key.Escape)
-                    {
-                        renaming = null;
-                        Render();
-                        e.Handled = true;
-                        return;
-                    }
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(32)
+            };
+            AppendFocusEmpty(stack);
+            host.Children.Add(stack);
+            canvas.Children.Add(host);
+            return;
+        }
 
-                    if (e.Key != Key.Enter)
-                    {
-                        return;
-                    }
+        canvas.Children.Add(ItemGrid(items));
+    }
 
-                    CommitRename(groupId, field.Text);
-                    e.Handled = true;
-                };
-                field.LostFocus += (_, _) => CommitRename(groupId, field.Text);
-                field.Loaded += (_, _) => field.Focus();
-                titleRow.Children.Add(field);
-                head.Children.Add(titleRow);
+    void DrawGroupCard(Panel canvas, Group group)
+    {
+        var items = ItemsFor(group);
+        var isFolded = folded.Contains(group.Id);
+        var card = new Border
+        {
+            Background = C.Glass("bg.float", 0.7),
+            BorderBrush = C.Brush("border.default"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(16),
+            Margin = new Thickness(8)
+        };
+        var stack = new StackPanel();
+        var head = new DockPanel();
+        var fold = C.IconButton(isFolded ? Glyph.Right : Glyph.Down, () =>
+        {
+            if (!folded.Add(group.Id)) folded.Remove(group.Id);
+            Render();
+        });
+        DockPanel.SetDock(fold, Dock.Right);
+        head.Children.Add(fold);
+
+        var bar = new Border { Width = 3, Height = 14, Background = new SolidColorBrush(Chrome.Paint(group.Color)), CornerRadius = new CornerRadius(2), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        DockPanel.SetDock(bar, Dock.Left);
+        head.Children.Add(bar);
+        var titleRow = new DockPanel { LastChildFill = true, VerticalAlignment = VerticalAlignment.Center };
+        var count = C.Label($"{items.Count} 项", 11, FontWeights.Normal, "text.tertiary");
+        count.VerticalAlignment = VerticalAlignment.Center;
+        count.Margin = new Thickness(8, 0, 0, 0);
+        DockPanel.SetDock(count, Dock.Right);
+        titleRow.Children.Add(count);
+        var name = C.Label(group.Name, 13, FontWeights.SemiBold, "text.primary");
+        name.TextTrimming = TextTrimming.CharacterEllipsis;
+        name.VerticalAlignment = VerticalAlignment.Center;
+        titleRow.Children.Add(name);
+        head.Children.Add(titleRow);
+
+        stack.Children.Add(head);
+        if (!isFolded)
+        {
+            if (items.Count == 0 && !edit)
+            {
+                var empty = C.Label(S.Store.Text("empty.panelStack"), 13, FontWeights.Normal, "text.tertiary");
+                empty.HorizontalAlignment = HorizontalAlignment.Center;
+                empty.TextAlignment = TextAlignment.Center;
+                empty.Margin = new Thickness(0, 24, 0, 24);
+                stack.Children.Add(empty);
             }
             else
             {
-                var titleRow = new DockPanel { LastChildFill = true, VerticalAlignment = VerticalAlignment.Center };
-                var count = C.Label($"{items.Count} 项", 11, FontWeights.Normal, "text.tertiary");
-                count.VerticalAlignment = VerticalAlignment.Center;
-                count.Margin = new Thickness(8, 0, 0, 0);
-                DockPanel.SetDock(count, Dock.Right);
-                titleRow.Children.Add(count);
-                var name = C.Label(group.Name, 13, FontWeights.SemiBold, "text.primary");
-                name.TextTrimming = TextTrimming.CharacterEllipsis;
-                name.VerticalAlignment = VerticalAlignment.Center;
-                titleRow.Children.Add(name);
-                head.Children.Add(titleRow);
-            }
-            stack.Children.Add(head);
-            if (!isFolded)
-            {
-                if (items.Count == 0)
+                var wrap = ItemGrid(items);
+                if (wrap is FrameworkElement gridBlock)
                 {
-                    var empty = C.Label(S.Store.Text("empty.panel"), 13, FontWeights.Normal, "text.secondary");
-                    empty.HorizontalAlignment = HorizontalAlignment.Center;
-                    empty.Margin = new Thickness(0, 24, 0, 8);
-                    stack.Children.Add(empty);
-                    var add = C.Primary(S.Store.Text("empty.panelAction"), AddShortcut);
-                    add.HorizontalAlignment = HorizontalAlignment.Center;
-                    stack.Children.Add(add);
+                    gridBlock.Margin = new Thickness(0, 12, 0, 0);
                 }
-                else
-                {
-                    var wrap = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
-                    foreach (var item in items)
-                    {
-                        wrap.Children.Add(Cell(item));
-                    }
 
-                    if (edit)
-                    {
-                        var add = new Border { Width = 80, Height = 80, Margin = new Thickness(4), CornerRadius = new CornerRadius(8), BorderBrush = C.Brush("border.strong"), BorderThickness = new Thickness(1), Cursor = Cursors.Hand };
-                        var plus = C.Label("添加", 12, FontWeights.Normal, "text.tertiary");
-                        plus.HorizontalAlignment = HorizontalAlignment.Center;
-                        plus.VerticalAlignment = VerticalAlignment.Center;
-                        add.Child = plus;
-                        add.MouseLeftButtonUp += (_, _) => AddShortcut();
-                        wrap.Children.Add(add);
-                    }
-
-                    stack.Children.Add(wrap);
-                }
+                stack.Children.Add(wrap);
             }
-
-            card.Tag = group.Id;
-            card.Child = stack;
-            canvas.Children.Add(card);
         }
+
+        card.Tag = group.Id;
+        card.Child = stack;
+        canvas.Children.Add(card);
     }
 
     UIElement Cell(Shortcut item)
@@ -403,15 +839,28 @@ public sealed class GroupsWindow : Window
         cell.Children.Add(label);
         if (edit)
         {
-            var del = C.IconButton(Glyph.Close, () =>
+            var del = new Border
+            {
+                Width = 18,
+                Height = 18,
+                CornerRadius = new CornerRadius(4),
+                Background = C.Brush("bg.float"),
+                BorderBrush = C.Brush("border.strong"),
+                BorderThickness = new Thickness(1),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(2, 2, 0, 0),
+                Cursor = Cursors.Hand,
+                Child = C.Label("−", 14, FontWeights.Normal, "text.secondary")
+            };
+            del.MouseLeftButtonUp += (_, e) =>
             {
                 S.Library.Items.RemoveAll(entry => entry.Id == item.Id);
                 foreach (var group in S.Library.Groups) group.ItemIds.RemoveAll(id => id == item.Id);
                 S.Save();
                 Render();
-            });
-            del.HorizontalAlignment = HorizontalAlignment.Right;
-            del.VerticalAlignment = VerticalAlignment.Top;
+                e.Handled = true;
+            };
             cell.Children.Add(del);
         }
 
@@ -434,6 +883,42 @@ public sealed class GroupsWindow : Window
         if (renaming != id) return;
         renaming = null;
         S.RenameGroup(id, name);
+        Render();
+    }
+
+    static bool CanDeleteGroup(string id) => id is not ("all" or "ungrouped");
+
+    void ConfirmDeleteGroup(string groupId)
+    {
+        if (!CanDeleteGroup(groupId))
+        {
+            return;
+        }
+
+        var group = S.Library.Groups.FirstOrDefault(entry => entry.Id == groupId);
+        if (group == null)
+        {
+            return;
+        }
+
+        var body = S.Store.Text("group.deleteConfirm", new Dictionary<string, string>
+        {
+            ["name"] = group.Name,
+            ["count"] = group.ItemIds.Count.ToString()
+        });
+        if (MessageBox.Show(body, S.Store.Text("group.deleteTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        S.DeleteGroup(groupId);
+        if (nav == groupId)
+        {
+            nav = "all";
+        }
+
+        renaming = null;
+        edit = false;
         Render();
     }
 
@@ -709,12 +1194,12 @@ public sealed class GroupsWindow : Window
 
     string DropTarget(string? hover)
     {
-        if (hover != null && hover != "fav" && S.Library.Groups.Any(group => group.Id == hover))
+        if (hover != null && S.Library.Groups.Any(group => group.Id == hover))
         {
             return hover;
         }
 
-        if (nav is not ("all" or "fav") && S.Library.Groups.Any(group => group.Id == nav))
+        if (nav is not "all" && S.Library.Groups.Any(group => group.Id == nav))
         {
             return nav;
         }
