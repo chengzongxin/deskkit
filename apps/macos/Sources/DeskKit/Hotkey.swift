@@ -3,22 +3,28 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
+struct HotkeyChord {
+    var name: String
+    var keyCode: Int64
+    var alt: Bool
+    var command: Bool
+    var control: Bool
+    var shift: Bool
+    var onFire: () -> Void
+    var held = false
+
+    func matches(code: Int64, alt: Bool, command: Bool, control: Bool, shift: Bool) -> Bool {
+        self.keyCode == code && self.alt == alt && self.command == command && self.control == control && self.shift == shift
+    }
+}
+
 final class HotkeyMonitor {
-    var onFire: () -> Void = {}
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    private var keyCode: Int64 = 49
-    private var needAlt = true
-    private var needCommand = false
-    private var needControl = false
-    private var needShift = false
+    private var chords: [HotkeyChord] = []
 
-    func update(keyCode: Int, alt: Bool, command: Bool, control: Bool, shift: Bool) {
-        self.keyCode = Int64(keyCode)
-        needAlt = alt
-        needCommand = command
-        needControl = control
-        needShift = shift
+    func setChords(_ chords: [HotkeyChord]) {
+        self.chords = chords
     }
 
     var isRunning: Bool { tap != nil }
@@ -57,7 +63,7 @@ final class HotkeyMonitor {
         self.source = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        Log.info("已在\(whereText)层拦截呼出键，uTools 不会再收到这个组合")
+        Log.info("已在\(whereText)层拦截全局热键")
     }
 
     func stop() {
@@ -103,18 +109,22 @@ final class HotkeyMonitor {
         let command = flags.contains(.maskCommand)
         let control = flags.contains(.maskControl)
         let shift = flags.contains(.maskShift)
-        guard code == keyCode, alt == needAlt, command == needCommand, control == needControl, shift == needShift else {
+        guard let index = chords.firstIndex(where: { $0.matches(code: code, alt: alt, command: command, control: control, shift: shift) }) else {
             return Unmanaged.passUnretained(event)
         }
-        // 松开和按住连发也吃掉，避免抬起时再触发一次把刚打开的浮层关掉。
+        // 一次按下只触发一次。抬起和连发都吃掉，避免刚打开又被关掉。
         let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        guard type == .keyDown, !repeating else {
-            Log.info("忽略呼出键抬起或连发")
+        if type != .keyDown || repeating {
+            if type == .keyUp { chords[index].held = false }
             return nil
         }
-        DispatchQueue.main.async { [weak self] in
-            Log.info("收到呼出热键")
-            self?.onFire()
+        if chords[index].held { return nil }
+        chords[index].held = true
+        let name = chords[index].name
+        let fire = chords[index].onFire
+        DispatchQueue.main.async {
+            Log.info("收到热键 \(name)")
+            fire()
         }
         return nil
     }

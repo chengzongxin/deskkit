@@ -49,6 +49,7 @@
   },
   "chords": {
     "summon": ["alt", "space"],
+    "panel": ["alt", "shift", "space"],
     "up": ["up"],
     "down": ["down"],
     "previous": ["ctrl", "p"],

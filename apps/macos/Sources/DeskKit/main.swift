@@ -64,19 +64,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.info("DeskKit 已启动")
     }
 
+    private var groupsMenuItem: NSMenuItem?
+
     private func applyHotkey() {
         let settings = session.settings
-        hotkey.update(
-            keyCode: settings.summonKeyCode,
-            alt: settings.summonAlt,
-            command: settings.summonCommand,
-            control: settings.summonControl,
-            shift: settings.summonShift
-        )
-        hotkey.onFire = { [weak self] in self?.session.summon() }
+        let panel = settings.hotkeys["panel"]
+        hotkey.setChords([
+            HotkeyChord(
+                name: "summon",
+                keyCode: Int64(settings.summonKeyCode),
+                alt: settings.summonAlt,
+                command: settings.summonCommand,
+                control: settings.summonControl,
+                shift: settings.summonShift,
+                onFire: { [weak self] in self?.session.summon() }
+            ),
+            HotkeyChord(
+                name: "panel",
+                keyCode: Int64(panel?.keyCode ?? 49),
+                alt: panel?.alt ?? true,
+                command: panel?.command ?? false,
+                control: panel?.control ?? false,
+                shift: panel?.shift ?? true,
+                onFire: { [weak self] in self?.shell.toggleGroups() }
+            )
+        ])
         hotkey.start()
         shell.noteHotkey(hotkey.isRunning)
-        Log.info("呼出键已按设置重新注册")
+        groupsMenuItem?.title = "快捷启动  \(shell.panelHotkeyText())"
+        Log.info("呼出键已按设置重新注册，快捷启动热键 \(shell.panelHotkeyText())")
     }
 
     private func wire() {
@@ -103,7 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let menu = NSMenu()
         menu.addItem(menuItem("呼出", #selector(summon)))
-        menu.addItem(menuItem("快捷启动", #selector(showGroups)))
+        let groups = menuItem("快捷启动", #selector(showGroups))
+        groupsMenuItem = groups
+        menu.addItem(groups)
         menu.addItem(menuItem("常用工具", #selector(showTools)))
         menu.addItem(menuItem("设置", #selector(showSettings)))
         menu.addItem(menuItem("重新注册呼出键", #selector(reregisterHotkey)))

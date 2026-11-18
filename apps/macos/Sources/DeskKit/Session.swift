@@ -63,6 +63,11 @@ struct Settings: Codable {
     var summonControl = false
     var summonShift = false
     var lastScreen = ""
+    var panelPlacedByUser = false
+    var panelX = 0.0
+    var panelY = 0.0
+    var panelWidth = 0.0
+    var panelHeight = 0.0
     var dismissedClip = ""
     var hotkeys: [String: HotkeyBinding] = [:]
     var triggerWords: [String: String] = [:]
@@ -72,6 +77,7 @@ struct Settings: Codable {
         case backgroundImagePath, backgroundOpacity
         case clipboardRetention, clipboardPaused, cloudSync, autoUpdate, guideDone, hiddenTools, toolOrder
         case summonKeyCode, summonAlt, summonCommand, summonControl, summonShift, lastScreen, dismissedClip
+        case panelPlacedByUser, panelX, panelY, panelWidth, panelHeight
         case hotkeys, triggerWords
     }
 
@@ -102,6 +108,11 @@ struct Settings: Codable {
         summonControl = try c.decodeIfPresent(Bool.self, forKey: .summonControl) ?? false
         summonShift = try c.decodeIfPresent(Bool.self, forKey: .summonShift) ?? false
         lastScreen = try c.decodeIfPresent(String.self, forKey: .lastScreen) ?? ""
+        panelPlacedByUser = try c.decodeIfPresent(Bool.self, forKey: .panelPlacedByUser) ?? false
+        panelX = try c.decodeIfPresent(Double.self, forKey: .panelX) ?? 0
+        panelY = try c.decodeIfPresent(Double.self, forKey: .panelY) ?? 0
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 0
+        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 0
         dismissedClip = try c.decodeIfPresent(String.self, forKey: .dismissedClip) ?? ""
         hotkeys = try c.decodeIfPresent([String: HotkeyBinding].self, forKey: .hotkeys) ?? [:]
         triggerWords = try c.decodeIfPresent([String: String].self, forKey: .triggerWords) ?? [:]
@@ -277,6 +288,19 @@ final class Session {
         onHide?()
     }
 
+    func renameGroup(_ id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = library.groups.firstIndex(where: { $0.id == id }) else {
+            Log.warn("分组名称不能为空")
+            return
+        }
+        guard library.groups[index].name != trimmed else { return }
+        library.groups[index].name = trimmed
+        save()
+        Log.info("分组已重命名为「\(trimmed)」")
+        onChange()
+    }
+
     func deleteGroup(_ id: String) {
         var records = library.groups.map { GroupRecord(id: $0.id, name: $0.name, color: $0.color, itemIds: $0.itemIds) }
         let items = library.items.map { ItemRecord(id: $0.id, title: $0.title) }
@@ -289,15 +313,74 @@ final class Session {
         onChange()
     }
 
-    func addShortcut(url: URL, groupId: String) {
+    @discardableResult
+    func addShortcut(url: URL, groupId: String) -> Bool {
+        let target = resolveGroup(groupId)
+        let stored: String
+        let kind: String
+        let title: String
+        let label: String
+        if url.isFileURL {
+            let file = url.standardizedFileURL
+            stored = file.path
+            var directory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: stored, isDirectory: &directory) else {
+                Log.warn("快捷项路径不存在 \(stored)")
+                return false
+            }
+            if file.pathExtension.lowercased() == "app" {
+                kind = "app"
+                label = "应用"
+                title = file.deletingPathExtension().lastPathComponent
+            } else if directory.boolValue {
+                kind = "file"
+                label = "文件夹"
+                title = file.lastPathComponent
+            } else {
+                kind = "file"
+                label = "文件"
+                title = file.lastPathComponent
+            }
+        } else if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            stored = url.absoluteString
+            kind = "url"
+            label = "网址"
+            title = url.host ?? url.absoluteString
+        } else {
+            Log.warn("不能放入快捷启动 \(url.absoluteString)")
+            return false
+        }
+        let name = title.isEmpty ? stored : title
+        if let existing = library.items.first(where: { $0.path == stored }) {
+            guard let index = library.groups.firstIndex(where: { $0.id == target }) else { return false }
+            if library.groups[index].itemIds.contains(existing.id) {
+                Log.info("快捷项已在这个分组里，跳过 \(existing.title)")
+                return false
+            }
+            library.groups[index].itemIds.append(existing.id)
+            save()
+            onChange()
+            Log.info("快捷项已放入「\(library.groups[index].name)」\(existing.title)")
+            return true
+        }
         let id = UUID().uuidString
-        let kind = url.pathExtension == "app" ? "app" : "file"
-        library.items.append(Shortcut(id: id, title: url.deletingPathExtension().lastPathComponent, path: url.path, kind: kind))
-        if let index = library.groups.firstIndex(where: { $0.id == groupId }) {
+        library.items.append(Shortcut(id: id, title: name, path: stored, kind: kind))
+        if let index = library.groups.firstIndex(where: { $0.id == target }) {
             library.groups[index].itemIds.append(id)
         }
         save()
         onChange()
+        let whereName = library.groups.first { $0.id == target }?.name ?? target
+        Log.info("已添加快捷项 \(name)（\(label)）到「\(whereName)」")
+        return true
+    }
+
+    private func resolveGroup(_ groupId: String) -> String {
+        if library.groups.contains(where: { $0.id == groupId }) { return groupId }
+        if library.groups.contains(where: { $0.id == "ungrouped" }) { return "ungrouped" }
+        if let first = library.groups.first?.id { return first }
+        library.groups.append(Group(id: "ungrouped", name: "未分组", color: "#98A1B0", itemIds: []))
+        return "ungrouped"
     }
 
     var onShow: (() -> Void)?

@@ -38,6 +38,15 @@ enum UI {
         NSFont.systemFont(ofSize: size, weight: weight)
     }
 
+    static func plain(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor, _ align: NSTextAlignment = .left) -> PlainLabel {
+        let label = PlainLabel()
+        label.text = text
+        label.font = font(size, weight)
+        label.color = color
+        label.alignment = align
+        return label
+    }
+
     static func label(_ text: String, _ size: CGFloat, _ weight: NSFont.Weight, _ color: NSColor) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.font = font(size, weight)
@@ -58,8 +67,202 @@ enum UI {
     }
 }
 
-final class FlippedView: NSView {
+class FlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// 顶栏、底栏和侧栏空白处按住可以拖动窗口。不改命中测试，按钮和列表仍由自己接收点击。
+final class WindowDragView: FlippedView {
+    var onDragEnd: (() -> Void)?
+
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        window.performDrag(with: event)
+        onDragEnd?()
+    }
+}
+
+/// 无边框按钮默认只认图标上的不透明像素，点在按钮空白处会穿透。这里整块区域都可点。
+final class SolidButton: NSButton {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard isEnabled, !isHidden, alphaValue > 0.01 else { return nil }
+        let local = convert(point, from: superview)
+        return bounds.contains(local) ? self : nil
+    }
+}
+
+/// 拖拽提示层不拦截命中，方便判断鼠标下面是哪个分组。
+final class PassThroughView: FlippedView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// 快捷启动面板接收 Finder 拖入的应用、文件、文件夹和网址。
+/// 自身不用图层画背景，把不透明的圆角画进窗口，系统才能对透明窗口做拖放命中。
+final class PanelDropView: FlippedView {
+    static let dragTypes: [NSPasteboard.PasteboardType] = [
+        .fileURL,
+        .URL,
+        .string,
+        NSPasteboard.PasteboardType("public.file-url"),
+        NSPasteboard.PasteboardType("public.url"),
+        NSPasteboard.PasteboardType("public.utf8-plain-text"),
+        NSPasteboard.PasteboardType("NSFilenamesPboardType"),
+        NSPasteboard.PasteboardType("com.apple.pasteboard.promised-file-url")
+    ]
+
+    var onUpdate: ((NSDraggingInfo) -> NSDragOperation)?
+    var onExit: (() -> Void)?
+    var onPerform: ((NSDraggingInfo) -> Bool)?
+    var onResizeEnd: (() -> Void)?
+    var fill: NSColor = .windowBackgroundColor { didSet { needsDisplay = true } }
+
+    private let resizeThickness: CGFloat = 7
+
+    private struct ResizeEdge: OptionSet {
+        let rawValue: Int
+        static let left = ResizeEdge(rawValue: 1)
+        static let right = ResizeEdge(rawValue: 2)
+        static let top = ResizeEdge(rawValue: 4)
+        static let bottom = ResizeEdge(rawValue: 8)
+    }
+
+    override var isOpaque: Bool { false }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes(Self.dragTypes)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerForDraggedTypes(Self.dragTypes)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds, xRadius: 14, yRadius: 14)
+        fill.setFill()
+        path.fill()
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let types = (sender.draggingPasteboard.types ?? []).map(\.rawValue).joined(separator: ",")
+        Log.info("拖拽进入 类型=\(types)")
+        return onUpdate?(sender) ?? []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onUpdate?(sender) ?? []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onExit?()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onExit?()
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let operation = onUpdate?(sender) ?? []
+        return !operation.isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onPerform?(sender) ?? false
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        resizeEdges(at: point).isEmpty ? super.hitTest(point) : self
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let thickness = resizeThickness
+        addCursorRect(NSRect(x: 0, y: 0, width: thickness, height: bounds.height), cursor: resizeCursor(.left))
+        addCursorRect(NSRect(x: bounds.width - thickness, y: 0, width: thickness, height: bounds.height), cursor: resizeCursor(.right))
+        addCursorRect(NSRect(x: 0, y: 0, width: bounds.width, height: thickness), cursor: resizeCursor(.top))
+        addCursorRect(NSRect(x: 0, y: bounds.height - thickness, width: bounds.width, height: thickness), cursor: resizeCursor(.bottom))
+        let corner: CGFloat = 14
+        addCursorRect(NSRect(x: 0, y: 0, width: corner, height: corner), cursor: resizeCursor([.top, .left]))
+        addCursorRect(NSRect(x: bounds.width - corner, y: 0, width: corner, height: corner), cursor: resizeCursor([.top, .right]))
+        addCursorRect(NSRect(x: 0, y: bounds.height - corner, width: corner, height: corner), cursor: resizeCursor([.bottom, .left]))
+        addCursorRect(NSRect(x: bounds.width - corner, y: bounds.height - corner, width: corner, height: corner), cursor: resizeCursor([.bottom, .right]))
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let edges = resizeEdges(at: convert(event.locationInWindow, from: nil))
+        guard !edges.isEmpty, let window else {
+            super.mouseDown(with: event)
+            return
+        }
+        let minSize = window.minSize
+        let startFrame = window.frame
+        let startMouse = NSEvent.mouseLocation
+        var changed = false
+        while true {
+            guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
+            if next.type == .leftMouseUp { break }
+            let mouse = NSEvent.mouseLocation
+            let dx = mouse.x - startMouse.x
+            let dy = mouse.y - startMouse.y
+            var frame = startFrame
+            if edges.contains(.right) {
+                frame.size.width = max(minSize.width, startFrame.width + dx)
+            }
+            if edges.contains(.left) {
+                let width = max(minSize.width, startFrame.width - dx)
+                frame.origin.x = startFrame.maxX - width
+                frame.size.width = width
+            }
+            if edges.contains(.top) {
+                frame.size.height = max(minSize.height, startFrame.height + dy)
+            }
+            if edges.contains(.bottom) {
+                let height = max(minSize.height, startFrame.height - dy)
+                frame.origin.y = startFrame.maxY - height
+                frame.size.height = height
+            }
+            if frame != startFrame { changed = true }
+            window.setFrame(frame, display: true)
+        }
+        if changed { onResizeEnd?() }
+    }
+
+    private func resizeEdges(at point: NSPoint) -> ResizeEdge {
+        var edges: ResizeEdge = []
+        if point.x <= resizeThickness { edges.insert(.left) }
+        if point.x >= bounds.width - resizeThickness { edges.insert(.right) }
+        if point.y <= resizeThickness { edges.insert(.top) }
+        if point.y >= bounds.height - resizeThickness { edges.insert(.bottom) }
+        return edges
+    }
+
+    private func resizeCursor(_ edges: ResizeEdge) -> NSCursor {
+        if #available(macOS 15.0, *) {
+            switch edges {
+            case [.top, .left]:
+                return NSCursor.frameResize(position: .topLeft, directions: .all)
+            case [.top, .right]:
+                return NSCursor.frameResize(position: .topRight, directions: .all)
+            case [.bottom, .left]:
+                return NSCursor.frameResize(position: .bottomLeft, directions: .all)
+            case [.bottom, .right]:
+                return NSCursor.frameResize(position: .bottomRight, directions: .all)
+            case [.left], [.right]:
+                return NSCursor.frameResize(position: edges.contains(.left) ? .left : .right, directions: .all)
+            default:
+                return NSCursor.frameResize(position: edges.contains(.top) ? .top : .bottom, directions: .all)
+            }
+        }
+        if edges.contains(.left) || edges.contains(.right) {
+            return edges.contains(.top) || edges.contains(.bottom) ? .crosshair : .resizeLeftRight
+        }
+        return .resizeUpDown
+    }
 }
 
 /// 单行文本，按字面宽度绘制，不走文本框的内边距，避免被裁成省略号。
@@ -67,31 +270,53 @@ final class PlainLabel: NSView {
     var text = "" { didSet { needsDisplay = true } }
     var color: NSColor = .secondaryLabelColor { didSet { needsDisplay = true } }
     var font: NSFont = .systemFont(ofSize: 11) { didSet { needsDisplay = true } }
+    var alignment: NSTextAlignment = .left { didSet { needsDisplay = true } }
+    var truncates = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
 
     static func width(for text: String, font: NSFont) -> CGFloat {
         ceil((text as NSString).size(withAttributes: [.font: font]).width)
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func draw(_ dirtyRect: NSRect) {
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        let style = NSMutableParagraphStyle()
+        style.alignment = alignment
+        style.lineBreakMode = truncates ? .byTruncatingTail : .byClipping
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: style
+        ]
         let size = (text as NSString).size(withAttributes: attributes)
-        let rect = NSRect(x: 0, y: (bounds.height - size.height) / 2, width: ceil(size.width), height: ceil(size.height))
+        let rect = NSRect(x: 0, y: (bounds.height - ceil(size.height)) / 2, width: bounds.width, height: ceil(size.height))
         (text as NSString).draw(in: rect, withAttributes: attributes)
     }
 }
 
-/// 让输入文字在输入行里垂直居中。
+/// 让输入文字在输入行里垂直居中，并可给占位文字留出左右边距。
 final class CenteredFieldCell: NSTextFieldCell {
+    var textInset: CGFloat = 0
+
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        let inset = rect.insetBy(dx: textInset, dy: 0)
         let sample = (stringValue.isEmpty ? (placeholderString ?? "") : stringValue) as NSString
         let size = sample.size(withAttributes: [.font: font ?? .systemFont(ofSize: 18)])
-        var title = super.drawingRect(forBounds: rect)
+        var title = super.drawingRect(forBounds: inset)
         if size.height > 0, size.height < title.height {
             title.origin.y += floor((title.height - size.height) / 2)
             title.size.height = ceil(size.height)
         }
         return title
+    }
+
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        drawingRect(forBounds: rect)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: drawingRect(forBounds: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
     }
 
     override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
@@ -167,9 +392,14 @@ final class HitRow: NSView {
     var swallowsClicks = false
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard swallowsClicks else { return super.hitTest(point) }
         let local = convert(point, from: superview)
-        return bounds.contains(local) ? self : nil
+        guard bounds.contains(local) else { return nil }
+        if !swallowsClicks {
+            for child in subviews.reversed() where child is NSControl {
+                if let hit = child.hitTest(local) { return hit }
+            }
+        }
+        return self
     }
     override func mouseUp(with event: NSEvent) { onClick() }
     override func rightMouseDown(with event: NSEvent) { onRightClick?(event) }
@@ -179,6 +409,8 @@ final class HitRow: NSView {
 final class IconView: NSView {
     var image: NSImage? { didSet { needsDisplay = true } }
     override var isFlipped: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let image else { return }
         image.draw(
