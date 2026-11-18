@@ -26,6 +26,14 @@ public sealed class ToolsWindow : Window
         PreviewKeyDown += OnKey;
     }
 
+    SolidColorBrush ToolCellFill(bool add)
+    {
+        var color = C.Brush(add ? "bg.subtle" : "bg.float").Color;
+        var brush = new SolidColorBrush(Color.FromArgb(add ? (byte)255 : (byte)220, color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
+    }
+
     public void ShowGrid()
     {
         mode = "grid";
@@ -99,7 +107,7 @@ public sealed class ToolsWindow : Window
                 CornerRadius = new CornerRadius(10),
                 BorderThickness = new Thickness(1),
                 BorderBrush = C.Brush(id == "add" ? "border.strong" : "border.default"),
-                Background = id == "add" ? C.Brush("bg.subtle") : Brushes.Transparent,
+                Background = ToolCellFill(id == "add"),
                 Cursor = Cursors.Hand
             };
             var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };

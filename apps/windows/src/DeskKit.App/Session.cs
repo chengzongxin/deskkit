@@ -14,7 +14,16 @@ public sealed class Session
     public Settings Settings { get; set; } = new();
     public Library Library { get; set; } = DefaultLibrary();
     public List<Clip> Clips { get; set; } = [];
-    public List<Hit> Index { get; set; } = [];
+    public List<Hit> Index
+    {
+        get => index;
+        set
+        {
+            index = value ?? [];
+            // 搜索每次输入都会用到这份表。提前做好，避免每敲一个字都重新分配。
+            searchRows = index.Select(hit => new IndexRow(hit.Id, hit.Kind, hit.Title, hit.Keywords)).ToArray();
+        }
+    }
     public List<string> Recents { get; set; } = [];
     public string Query { get; set; } = "";
     public string TriggerWord { get; set; } = "";
@@ -26,6 +35,8 @@ public sealed class Session
     public Action? OnHide { get; set; }
     public Action<string>? OnOpenTool { get; set; }
     DateTime shownAt = DateTime.MinValue;
+    List<Hit> index = [];
+    IndexRow[] searchRows = [];
 
     public Session(ContractStore store)
     {
@@ -168,8 +179,7 @@ public sealed class Session
             found.Add(ToolHit("ts", time, "时间戳", "timestamp", time, 90));
         }
 
-        var rows = Index.Select(hit => new IndexRow(hit.Id, hit.Kind, hit.Title, hit.Keywords)).ToArray();
-        var ids = KeywordMatcher.Match(rows, trimmed).ToHashSet(StringComparer.Ordinal);
+        var ids = KeywordMatcher.Match(searchRows, trimmed).ToHashSet(StringComparer.Ordinal);
         var matched = Index.Where(hit => ids.Contains(hit.Id)).OrderByDescending(hit => hit.Score).ToList();
         foreach (var kind in new[] { "tool", "app", "file", "url" })
         {
@@ -182,8 +192,116 @@ public sealed class Session
         Go(Hits.Count == 0 ? "A4" : "A3");
     }
 
-    public List<Hit> RecentHits() =>
-        Recents.Select(id => Index.FirstOrDefault(hit => hit.Id == id)).Where(hit => hit != null).Take(12).Cast<Hit>().ToList();
+    public List<Hit> RecentHits()
+    {
+        var rows = new List<Hit>();
+        foreach (var id in Recents)
+        {
+            if (TryResolveRecent(id) is Hit hit)
+            {
+                rows.Add(hit);
+            }
+
+            if (rows.Count >= 6)
+            {
+                break;
+            }
+        }
+
+        return rows;
+    }
+
+    public void TouchRecentFromPath(string path, string kind, string title)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var hit = Index.FirstOrDefault(item => string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (hit != null)
+        {
+            Remember(hit.Id);
+            return;
+        }
+
+        Remember(RecentPathKey(path));
+    }
+
+    static string RecentPathKey(string path) => "path:" + path;
+
+    Hit? TryResolveRecent(string id)
+    {
+        var hit = Index.FirstOrDefault(item => item.Id == id);
+        if (hit != null)
+        {
+            return hit;
+        }
+
+        if (id.StartsWith("path:", StringComparison.Ordinal))
+        {
+            var path = id[5..];
+            hit = Index.FirstOrDefault(item => string.Equals(item.Path, path, StringComparison.OrdinalIgnoreCase));
+            if (hit != null)
+            {
+                return hit;
+            }
+
+            return HitFromStoredPath(path);
+        }
+
+        var shortcut = Library.Items.FirstOrDefault(item => item.Id == id);
+        if (shortcut == null)
+        {
+            return null;
+        }
+
+        hit = Index.FirstOrDefault(item => string.Equals(item.Path, shortcut.Path, StringComparison.OrdinalIgnoreCase));
+        return hit ?? new Hit
+        {
+            Id = shortcut.Id,
+            Kind = shortcut.Kind,
+            Title = shortcut.Title,
+            Subtitle = shortcut.Kind switch { "url" => "网址", "app" => "应用", _ => "文件" },
+            Path = shortcut.Path,
+            Score = 20
+        };
+    }
+
+    static Hit? HitFromStoredPath(string path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        if (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            var host = Uri.TryCreate(path, UriKind.Absolute, out var uri) ? uri.Host : path;
+            return new Hit { Id = "url-" + path, Kind = "url", Title = host, Subtitle = "网址", Path = path, Score = 20 };
+        }
+
+        var title = System.IO.Path.GetFileNameWithoutExtension(path);
+        if (title.Length == 0)
+        {
+            title = path;
+        }
+
+        var kind = System.IO.Path.GetExtension(path).Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? "app"
+            : "file";
+        return new Hit
+        {
+            Id = RecentPathKey(path),
+            Kind = kind,
+            Title = title,
+            Subtitle = kind == "app" ? "应用" : "文件",
+            Path = path,
+            Score = 20
+        };
+    }
 
     public void Execute(Hit hit)
     {
@@ -299,43 +417,34 @@ public sealed class Session
         OnChange();
     }
 
-    public void AddShortcut(string path, string groupId)
+    public bool AddShortcut(string path, string groupId)
     {
         var full = path.Trim().TrimEnd('\\', '/');
-        var existing = Library.Items.FirstOrDefault(item => string.Equals(item.Path, full, StringComparison.OrdinalIgnoreCase));
-        if (existing != null)
+        if (!File.Exists(full) && !Directory.Exists(full))
         {
-            var index = Library.Groups.FindIndex(group => group.Id == groupId);
-            if (index >= 0 && !Library.Groups[index].ItemIds.Contains(existing.Id))
-            {
-                Library.Groups[index].ItemIds.Add(existing.Id);
-                Save();
-                OnChange();
-                Log.Info($"快捷项已放入「{Library.Groups[index].Name}」{existing.Title}");
-                return;
-            }
-
-            Log.Info($"快捷项已存在，跳过 {existing.Title}");
-            return;
+            Log.Warn($"快捷项路径不存在 {full}");
+            return false;
         }
 
         var directory = Directory.Exists(full);
         var extension = System.IO.Path.GetExtension(full);
         var kind = !directory && (extension.Equals(".exe", StringComparison.OrdinalIgnoreCase) || extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)) ? "app" : "file";
         var title = kind == "app" ? System.IO.Path.GetFileNameWithoutExtension(full) : System.IO.Path.GetFileName(full);
-        if (string.IsNullOrEmpty(title)) title = full;
         var label = kind == "app" ? "应用" : directory ? "文件夹" : "文件";
-        var id = Guid.NewGuid().ToString();
-        Library.Items.Add(new Shortcut { Id = id, Title = title, Path = full, Kind = kind });
-        Log.Info($"已添加快捷项 {title}（{label}）");
-        AppendToGroup(groupId, id);
+        return PutShortcut(full, string.IsNullOrEmpty(title) ? full : title, kind, label, groupId);
     }
 
-    public void AddUrl(string url, string groupId)
+    public bool AddUrl(string url, string groupId)
     {
-        var id = Guid.NewGuid().ToString();
-        Library.Items.Add(new Shortcut { Id = id, Title = url, Path = url, Kind = "url" });
-        AppendToGroup(groupId, id);
+        var text = url.Trim();
+        if (!Uri.TryCreate(text, UriKind.Absolute, out var parsed) || parsed.Scheme is not ("http" or "https"))
+        {
+            Log.Warn($"不能放入快捷启动 {text}");
+            return false;
+        }
+
+        var title = string.IsNullOrEmpty(parsed.Host) ? text : parsed.Host;
+        return PutShortcut(text, title, "url", "网址", groupId);
     }
 
     public (string ToolId, string Label, string Placeholder)? ResolveTrigger(string word)
@@ -405,17 +514,74 @@ public sealed class Session
 
     public static void Open(string path)
     {
+        if (!path.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !path.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            && !File.Exists(path)
+            && !Directory.Exists(path))
+        {
+            Log.Warn($"快捷项已经不在原位置 {path}");
+        }
+
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    bool PutShortcut(string stored, string title, string kind, string label, string groupId)
+    {
+        var target = ResolveGroup(groupId);
+        var existing = Library.Items.FirstOrDefault(item => string.Equals(item.Path, stored, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+        {
+            var index = Library.Groups.FindIndex(group => group.Id == target);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            if (Library.Groups[index].ItemIds.Contains(existing.Id))
+            {
+                Log.Info($"快捷项已在这个分组里，跳过 {existing.Title}");
+                return false;
+            }
+
+            Library.Groups[index].ItemIds.Add(existing.Id);
+            Save();
+            OnChange();
+            Log.Info($"快捷项已放入「{Library.Groups[index].Name}」{existing.Title}");
+            return true;
+        }
+
+        var id = Guid.NewGuid().ToString();
+        Library.Items.Add(new Shortcut { Id = id, Title = title, Path = stored, Kind = kind });
+        AppendToGroup(target, id);
+        var whereName = Library.Groups.FirstOrDefault(group => group.Id == target)?.Name ?? target;
+        Log.Info($"已添加快捷项 {title}（{label}）到「{whereName}」");
+        return true;
+    }
+
+    string ResolveGroup(string groupId)
+    {
+        if (Library.Groups.Any(group => group.Id == groupId))
+        {
+            return groupId;
+        }
+
+        if (Library.Groups.Any(group => group.Id == "ungrouped"))
+        {
+            return "ungrouped";
+        }
+
+        if (Library.Groups.Count > 0)
+        {
+            return Library.Groups[0].Id;
+        }
+
+        Library.Groups.Add(new Group { Id = "ungrouped", Name = "未分组", Color = "#98A1B0", ItemIds = [] });
+        return "ungrouped";
     }
 
     void AppendToGroup(string groupId, string id)
     {
         var index = Library.Groups.FindIndex(group => group.Id == groupId);
-        if (index < 0)
-        {
-            index = 0;
-        }
-
         if (index >= 0)
         {
             Library.Groups[index].ItemIds.Add(id);

@@ -231,6 +231,7 @@ public sealed class SettingsWindow : Window
 
             S.Settings.BackgroundImagePath = "";
             S.Save();
+            shell.Chrome.Invalidate();
             shell.RefreshSurfaces();
         }));
         return panel;
@@ -247,6 +248,7 @@ public sealed class SettingsWindow : Window
             S.Settings.BackgroundOpacity = slider.Value;
             label.Text = $"{(int)(slider.Value * 100)}%";
             S.Save();
+            shell.Chrome.Invalidate();
             shell.RefreshSurfaces();
         };
         panel.Children.Add(slider);
@@ -287,11 +289,19 @@ public sealed class SettingsWindow : Window
         if (!ok) return;
         var ext = System.IO.Path.GetExtension(dialog.FileName);
         if (ext.Length == 0) ext = ".png";
-        var destination = Paths.File("background" + ext);
+        var previous = S.Settings.BackgroundImagePath;
+        if (previous.Length > 0 && File.Exists(previous))
+        {
+            try { File.Delete(previous); } catch (Exception ex) { Log.Warn($"删除旧背景图失败 {ex.Message}"); }
+        }
+
+        var destination = Paths.File($"background-{DateTime.UtcNow.Ticks}{ext}");
         File.Copy(dialog.FileName, destination, overwrite: true);
         S.Settings.BackgroundImagePath = destination;
         S.Save();
+        shell.Chrome.Invalidate();
         shell.RefreshSurfaces();
+        Log.Info($"已设置背景图 {Path.GetFileName(destination)}");
     }
 
     void Export()

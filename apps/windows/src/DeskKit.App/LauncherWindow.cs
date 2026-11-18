@@ -21,8 +21,10 @@ public sealed class LauncherWindow : Window
     readonly Border footerBar;
     readonly Border root;
     bool updating;
+    bool footerReady;
     string scrollKey = "";
     List<Hit> homeList = [];
+    NativeMethods.WinRect? lockedFrame;
 
     Chrome C => shell.Chrome;
     Session S => shell.Session;
@@ -43,8 +45,10 @@ public sealed class LauncherWindow : Window
             FontSize = S.Store.Layout("type", "input", "size"),
             FontWeight = FontWeights.Medium,
             FontFamily = Chrome.Font,
+            Padding = new Thickness(0, 0, 8, 0),
             VerticalContentAlignment = VerticalAlignment.Center,
-            CaretBrush = C.Brush("accent")
+            CaretBrush = C.Brush("accent"),
+            FocusVisualStyle = null
         };
         hint = new TextBlock
         {
@@ -52,7 +56,8 @@ public sealed class LauncherWindow : Window
             FontSize = box.FontSize,
             FontFamily = Chrome.Font,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(2, 0, 0, 0)
+            Margin = new Thickness(0, 0, 8, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
         capsuleText = new TextBlock { FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0) };
         var capsuleClose = C.IconButton(Glyph.Close, DropTrigger);
@@ -83,9 +88,10 @@ public sealed class LauncherWindow : Window
         input.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
         input.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
         input.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
-        var search = new TextBlock { Text = Glyph.Search, FontFamily = Chrome.IconFont, FontSize = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        search.Name = "search";
-        Grid.SetColumn(search, 0);
+        var searchHost = new Grid { Width = 20, Height = 20, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        searchHost.Name = "search";
+        searchHost.Children.Add(C.SearchMark(16));
+        Grid.SetColumn(searchHost, 0);
         Grid.SetColumn(capsule, 1);
         var fieldHost = new Grid();
         fieldHost.Children.Add(box);
@@ -96,7 +102,7 @@ public sealed class LauncherWindow : Window
         var close = C.IconButton(Glyph.Close, () => S.Hide());
         Grid.SetColumn(gear, 4);
         Grid.SetColumn(close, 5);
-        input.Children.Add(search);
+        input.Children.Add(searchHost);
         input.Children.Add(capsule);
         input.Children.Add(fieldHost);
         input.Children.Add(clear);
@@ -130,6 +136,29 @@ public sealed class LauncherWindow : Window
         PreviewKeyDown += OnKey;
         Deactivated += (_, _) => OnBlur();
         Rebuild();
+    }
+
+    public void LockFrame()
+    {
+        if (!C.TryReadFrame(this, out var rect))
+        {
+            return;
+        }
+
+        lockedFrame = rect;
+        C.ApplyFrame(this, rect, syncWpf: true);
+    }
+
+    public void UnlockFrame() => lockedFrame = null;
+
+    public void EnforceFrame()
+    {
+        if (lockedFrame is not { } frame)
+        {
+            return;
+        }
+
+        C.ApplyFrame(this, frame, syncWpf: false);
     }
 
     public void Rebuild()
@@ -177,18 +206,7 @@ public sealed class LauncherWindow : Window
             DrawResults();
         }
 
-        body.Measure(new Size(Width, double.PositiveInfinity));
-        var contentH = body.DesiredSize.Height;
-        var home = S.Query.Trim().Length == 0 && S.TriggerWord.Length == 0;
-        var empty = S.Machine.State == "A4" || (S.Hits.Count == 0 && !home && !triggered);
-        var minH = home ? S.Store.Layout("launcher", "defaultHeight") : empty ? S.Store.Layout("launcher", "emptyHeight") : 220;
-        var height = Math.Min(S.Store.Layout("launcher", "maxHeight"), Math.Max(minH, 64 + contentH + 40));
-        var top = Top + Height;
-        Height = height;
-        if (!double.IsNaN(top) && top > height)
-        {
-            Top = top - height;
-        }
+        EnforceFrame();
 
         var key = S.Query + "|" + S.TriggerWord;
         if (key != scrollKey)
@@ -214,13 +232,10 @@ public sealed class LauncherWindow : Window
         var candidates = S.Index.Where(hit => hit.Kind == "app" && !seen.Contains(hit.Id)).Take(12).ToList();
         homeList = rows.Concat(candidates).ToList();
         var number = 1;
-        if (rows.Count > 0)
+        Section("最近使用", rows.Count > 0 ? $"{rows.Count} 条" : "打开应用后会出现在这里");
+        foreach (var hit in rows)
         {
-            Section("最近使用", $"{rows.Count} 条");
-            foreach (var hit in rows)
-            {
-                body.Children.Add(Row(hit, number++, selected: false, showEnter: false));
-            }
+            body.Children.Add(Row(hit, number++, selected: false, showEnter: false));
         }
 
         if (candidates.Count > 0)
@@ -374,15 +389,8 @@ public sealed class LauncherWindow : Window
 
     void DrawEmpty()
     {
-        var mark = new TextBlock
-        {
-            Text = Glyph.Search,
-            FontFamily = Chrome.IconFont,
-            FontSize = 22,
-            Foreground = C.Brush("text.tertiary"),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
-        };
+        var markHost = new Grid { Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        markHost.Children.Add(C.SearchMark(22));
         var circle = new Border
         {
             Width = 56,
@@ -390,23 +398,35 @@ public sealed class LauncherWindow : Window
             CornerRadius = new CornerRadius(28),
             Background = C.Brush("bg.subtle"),
             HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 24, 0, 8),
-            Child = mark
+            Margin = new Thickness(0, 8, 0, 8),
+            Child = markHost
         };
-        body.Children.Add(circle);
+        var stack = new StackPanel();
+        stack.Children.Add(circle);
         var title = C.Label($"没有找到与 “{S.Query}” 相关的内容", 13, FontWeights.Normal, "text.secondary");
         title.HorizontalAlignment = HorizontalAlignment.Center;
         title.TextAlignment = TextAlignment.Center;
-        body.Children.Add(title);
+        title.TextWrapping = TextWrapping.Wrap;
+        title.MaxWidth = 520;
+        stack.Children.Add(title);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 16, 0, 0) };
         actions.Children.Add(C.Primary("用浏览器搜索", Browse));
         actions.Children.Add(C.Soft("清空重来", ClearQuery));
         actions.Children.Add(C.Soft("查看全部工具", () => shell.ShowTools()));
-        body.Children.Add(actions);
+        stack.Children.Add(actions);
         var tip = C.Label($"{S.Store.FormatChord("windows", "escape")} 逐级回退 · 也可以试试 wx / kzmb / 123*4", 11, FontWeights.Normal, "text.tertiary");
         tip.HorizontalAlignment = HorizontalAlignment.Center;
         tip.Margin = new Thickness(0, 12, 0, 0);
-        body.Children.Add(tip);
+        stack.Children.Add(tip);
+        var plate = C.Brush("bg.float").Color;
+        body.Children.Add(new Border
+        {
+            Margin = new Thickness(48, 8, 48, 4),
+            Padding = new Thickness(16, 4, 16, 16),
+            CornerRadius = new CornerRadius(12),
+            Background = new SolidColorBrush(Color.FromArgb(230, plate.R, plate.G, plate.B)),
+            Child = stack
+        });
     }
 
     UIElement ClipCard(Clip clip)
@@ -418,11 +438,13 @@ public sealed class LauncherWindow : Window
             Background = C.Brush("accent.soft"),
             BorderBrush = C.Brush("accent"),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10)
+            CornerRadius = new CornerRadius(10),
+            ClipToBounds = true
         };
-        var row = new DockPanel();
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        DockPanel.SetDock(buttons, Dock.Right);
         buttons.Children.Add(C.Soft("翻译", () =>
         {
             S.Query = "fy " + clip.Text;
@@ -430,18 +452,31 @@ public sealed class LauncherWindow : Window
             Rebuild();
         }));
         buttons.Children.Add(C.Soft("剪贴板", () => shell.ShowTool("clipboard")));
-        buttons.Children.Add(C.Soft("忽略", () =>
+        var dismiss = C.Soft("忽略", () =>
         {
             S.Settings.DismissedClip = clip.Id;
             S.Save();
             Rebuild();
-        }));
-        var text = new StackPanel();
-        text.Children.Add(C.Label("刚复制了文本 · 可用翻译 / 剪贴板处理", 12, FontWeights.SemiBold, "accent.hover"));
-        var preview = clip.Text.Length > 48 ? clip.Text[..48] : clip.Text;
-        text.Children.Add(C.Label(preview, 12, FontWeights.Normal, "text.secondary"));
-        row.Children.Add(buttons);
+        });
+        dismiss.Margin = new Thickness(0);
+        buttons.Children.Add(dismiss);
+        var text = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var heading = C.Label("刚复制了文本 · 可用翻译 / 剪贴板处理", 12, FontWeights.SemiBold, "accent.hover");
+        var preview = clip.Text.Replace("\r", " ").Replace("\n", " ");
+        if (preview.Length > 48)
+        {
+            preview = preview[..48];
+        }
+
+        var detail = C.Label(preview, 12, FontWeights.Normal, "text.secondary");
+        Grid.SetRow(detail, 1);
+        text.Children.Add(heading);
+        text.Children.Add(detail);
+        Grid.SetColumn(buttons, 1);
         row.Children.Add(text);
+        row.Children.Add(buttons);
         card.Child = row;
         return card;
     }
@@ -484,11 +519,17 @@ public sealed class LauncherWindow : Window
         var icon = HitIcon(hit);
         Grid.SetColumn(icon, 1);
         grid.Children.Add(icon);
-        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(C.Label(hit.Title, 14, FontWeights.Medium, "text.primary"));
-        if (height >= 48)
+        var text = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var title = C.Label(hit.Title, 14, FontWeights.Medium, "text.primary");
+        Grid.SetRow(title, 0);
+        text.Children.Add(title);
+        if (height >= 48 && !string.IsNullOrEmpty(hit.Subtitle))
         {
-            text.Children.Add(C.Label(hit.Subtitle, 12, FontWeights.Normal, "text.tertiary"));
+            text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var subtitle = C.Label(hit.Subtitle, 12, FontWeights.Normal, "text.tertiary");
+            Grid.SetRow(subtitle, 1);
+            text.Children.Add(subtitle);
         }
 
         Grid.SetColumn(text, 2);
@@ -535,12 +576,13 @@ public sealed class LauncherWindow : Window
 
     UIElement HitIcon(Hit hit)
     {
-        if (hit.Kind != "tool")
+        if (hit.Kind != "tool" && !string.IsNullOrEmpty(hit.Path))
         {
-            var image = Icons.File(hit.Path, 32);
-            if (image != null)
+            var image = new Image { Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            image.Source = Icons.File(hit.Path, 32, image);
+            if (image.Source != null)
             {
-                return new Image { Source = image, Width = 32, Height = 32, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                return image;
             }
         }
 
@@ -570,6 +612,12 @@ public sealed class LauncherWindow : Window
 
     void LayoutFooter()
     {
+        if (footerReady && shell.HotkeyReady && footerHints.Children.Count > 0)
+        {
+            return;
+        }
+
+        footerReady = shell.HotkeyReady;
         footerHints.Children.Clear();
         var alt = S.Store.KeyLabel("windows", "alt");
         if (!shell.HotkeyReady)
@@ -610,6 +658,7 @@ public sealed class LauncherWindow : Window
         timer.Tick += (_, _) =>
         {
             timer.Stop();
+            footerReady = false;
             LayoutFooter();
         };
         timer.Start();
@@ -641,7 +690,6 @@ public sealed class LauncherWindow : Window
         }
 
         S.Search();
-        Log.Info($"输入变化，长度 {typed.Length}，状态 {S.Machine.State}，结果 {S.Hits.Count}");
         Rebuild();
     }
 

@@ -10,7 +10,12 @@ public partial class App : Application
     Session? session;
     Shell? shell;
     HotkeyHost? hotkey;
-    System.Windows.Forms.NotifyIcon? tray;
+    NativeTray? tray;
+    System.Windows.Forms.NotifyIcon? legacyTray;
+    System.Drawing.Icon? trayIcon;
+    System.Windows.Forms.Form? traySink;
+    System.Windows.Forms.ToolStripMenuItem? groupsItem;
+    System.Windows.Forms.ContextMenuStrip? trayMenu;
     uint clipboardSeq;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -47,7 +52,7 @@ public partial class App : Application
         });
         shell.HotkeyChanged += ApplyHotkey;
         ApplyHotkey();
-        BuildTray();
+        Dispatcher.BeginInvoke(BuildTray, DispatcherPriority.ApplicationIdle);
 
         Task.Run(Indexer.Collect).ContinueWith(task =>
         {
@@ -109,10 +114,22 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        if (tray != null)
+        tray?.Dispose();
+        tray = null;
+        if (legacyTray != null)
         {
-            tray.Visible = false;
-            tray.Dispose();
+            legacyTray.Visible = false;
+            legacyTray.Dispose();
+            legacyTray = null;
+        }
+        trayIcon?.Dispose();
+        trayIcon = null;
+
+        if (traySink != null)
+        {
+            traySink.Close();
+            traySink.Dispose();
+            traySink = null;
         }
 
         hotkey?.Dispose();
@@ -135,8 +152,13 @@ public partial class App : Application
         var panelVk = HotkeyMap.ToVirtualKey(panel?.KeyCode ?? 49, panelRecorded);
         var panelOk = hotkey.TryRegisterPanel(panel?.Alt ?? true, panel?.Control ?? false, panel?.Shift ?? true, panel?.Command ?? false, panelVk);
         shell.NoteHotkey(ok);
+        if (groupsItem != null)
+        {
+            groupsItem.Text = "快捷启动  " + shell.PanelHotkeyText();
+        }
+
         Log.Info(ok ? "呼出键已按设置重新注册" : "呼出键注册失败");
-        Log.Info(panelOk ? "快捷启动热键已注册" : "快捷启动热键注册失败");
+        Log.Info(panelOk ? $"快捷启动热键已注册 {shell.PanelHotkeyText()}" : "快捷启动热键注册失败");
     }
 
     void ReadClipboard()
@@ -162,24 +184,77 @@ public partial class App : Application
         }
     }
 
+    void EnsureTraySink()
+    {
+        if (traySink != null)
+        {
+            return;
+        }
+
+        traySink = new System.Windows.Forms.Form
+        {
+            Text = "DeskKit",
+            ShowInTaskbar = false,
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.None,
+            Width = 0,
+            Height = 0,
+            StartPosition = System.Windows.Forms.FormStartPosition.Manual,
+            Location = new System.Drawing.Point(-20000, -20000),
+            Opacity = 0
+        };
+        traySink.Shown += (_, _) => traySink.Hide();
+        traySink.Show();
+        traySink.Hide();
+    }
+
     void BuildTray()
     {
-        var menu = new System.Windows.Forms.ContextMenuStrip();
+        System.Windows.Forms.Application.EnableVisualStyles();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+        EnsureTraySink();
+        trayMenu = new System.Windows.Forms.ContextMenuStrip();
+        var menu = trayMenu;
         menu.Items.Add("呼出", null, (_, _) => Dispatcher.Invoke(() => session?.Summon()));
-        menu.Items.Add("快捷启动", null, (_, _) => Dispatcher.Invoke(() => shell?.ShowGroups()));
+        groupsItem = new System.Windows.Forms.ToolStripMenuItem("快捷启动  " + (shell?.PanelHotkeyText() ?? ""));
+        groupsItem.Click += (_, _) => Dispatcher.Invoke(() => shell?.ShowGroups());
+        menu.Items.Add(groupsItem);
         menu.Items.Add("常用工具", null, (_, _) => Dispatcher.Invoke(() => shell?.ShowTools()));
         menu.Items.Add("设置", null, (_, _) => Dispatcher.Invoke(() => shell?.ShowSettings()));
         menu.Items.Add("重新注册呼出键", null, (_, _) => Dispatcher.Invoke(ApplyHotkey));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => Dispatcher.Invoke(Quit));
-        tray = new System.Windows.Forms.NotifyIcon
+        trayIcon = AppIcon.AllocateTrayIcon();
+        tray = new NativeTray();
+        tray.LeftClick += () => Dispatcher.Invoke(() => session?.Summon());
+        tray.RightClick += (_, _) => Dispatcher.BeginInvoke(ShowTrayMenu, DispatcherPriority.Normal);
+        if (!tray.TryCreate(trayIcon, "DeskKit"))
         {
-            Icon = System.Drawing.SystemIcons.Application,
+            Log.Warn("回退 WinForms NotifyIcon");
+            BuildTrayWinForms(menu);
+        }
+    }
+
+    void ShowTrayMenu()
+    {
+        if (trayMenu == null)
+        {
+            return;
+        }
+
+        trayMenu.Show(System.Windows.Forms.Cursor.Position);
+    }
+
+    void BuildTrayWinForms(System.Windows.Forms.ContextMenuStrip menu, bool visible = true)
+    {
+        legacyTray?.Dispose();
+        legacyTray = new System.Windows.Forms.NotifyIcon
+        {
+            Icon = trayIcon ?? AppIcon.AllocateTrayIcon(),
             Text = "DeskKit",
-            Visible = true,
+            Visible = visible,
             ContextMenuStrip = menu
         };
-        tray.MouseClick += (_, args) =>
+        legacyTray.MouseClick += (_, args) =>
         {
             if (args.Button == System.Windows.Forms.MouseButtons.Left)
             {

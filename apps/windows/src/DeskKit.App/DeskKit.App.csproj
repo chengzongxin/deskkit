@@ -6,6 +6,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>DeskKit.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
   <ItemGroup>
@@ -22,6 +23,9 @@
     <ProjectReference Include="..\DeskKit.Platform\DeskKit.Platform.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\..\..\contracts\**\*.json" Link="contracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\..\contracts\**\*.json" Link="contracts\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="Always" />
+    <Content Include="Assets\app-icon.ico" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\app-icon.ico" />
+    <Resource Include="Assets\app-icon.png" />
   </ItemGroup>
 </Project>

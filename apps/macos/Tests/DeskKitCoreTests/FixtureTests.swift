@@ -8,7 +8,7 @@ final class FixtureTests: XCTestCase {
         XCTAssertEqual(store.hash.count, 64)
         XCTAssertEqual(store.hash, try ContractStore.hashTree(store.root))
         XCTAssertEqual("#9B6CF6", store.groupColors[3])
-        XCTAssertEqual(720, store.layout("launcher", "width"))
+        XCTAssertEqual(800, store.layout("launcher", "width"))
         XCTAssertEqual(64, store.layout("launcher", "inputRowHeight"))
     }
 

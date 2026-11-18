@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32;
@@ -7,6 +8,8 @@ namespace DeskKit.Platform;
 public static class Log
 {
     static readonly string FilePath = Path.Combine(Paths.Root, "logs", "deskkit.log");
+    static readonly ConcurrentQueue<string> Pending = new();
+    static int pumping;
 
     public static void Info(string message) => Write("INFO", message);
 
@@ -16,14 +19,36 @@ public static class Log
     {
         var line = $"{DateTime.UtcNow:yyyy-MM-ddTHH:mm:ssZ} {level} {message}";
         Console.Error.WriteLine(line);
+        Pending.Enqueue(line);
+        if (Interlocked.CompareExchange(ref pumping, 1, 0) == 0)
+        {
+            Task.Run(Flush);
+        }
+    }
+
+    static void Flush()
+    {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.AppendAllText(FilePath, line + Environment.NewLine, Encoding.UTF8);
+            using var stream = new FileStream(FilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            using var writer = new StreamWriter(stream, Encoding.UTF8);
+            while (Pending.TryDequeue(out var line))
+            {
+                writer.WriteLine(line);
+            }
         }
         catch
         {
             // 日志写失败不能影响主流程。
+        }
+        finally
+        {
+            Interlocked.Exchange(ref pumping, 0);
+            if (!Pending.IsEmpty && Interlocked.CompareExchange(ref pumping, 1, 0) == 0)
+            {
+                Task.Run(Flush);
+            }
         }
     }
 }
@@ -87,6 +112,27 @@ public static class NativeMethods
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
     public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out WinRect rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WinRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public int Width => Right - Left;
+        public int Height => Bottom - Top;
+    }
+
+    public const uint SwpNoZOrder = 0x0004;
+    public const uint SwpNoActivate = 0x0010;
 
     public static void MakeToolWindow(IntPtr hwnd)
     {

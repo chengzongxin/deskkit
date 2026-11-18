@@ -70,6 +70,11 @@ public sealed class Settings
     public bool SummonControl { get; set; }
     public bool SummonShift { get; set; }
     public string LastScreen { get; set; } = "";
+    public bool PanelPlacedByUser { get; set; }
+    public double PanelX { get; set; }
+    public double PanelY { get; set; }
+    public double PanelWidth { get; set; }
+    public double PanelHeight { get; set; }
     public string DismissedClip { get; set; } = "";
     public Dictionary<string, HotkeyBinding> Hotkeys { get; set; } = new();
     public Dictionary<string, string> TriggerWords { get; set; } = new();

@@ -31,6 +31,7 @@ public static class Glyph
     public const string Link = "\uE71B";
     public const string Doc = "\uE8A5";
     public const string App = "\uECAA";
+    public const string Edit = "\uE70F";
 
     public static string ForTool(string? id) => id switch
     {
@@ -65,7 +66,12 @@ public sealed class Chrome
         _ => false
     };
 
-    public void Invalidate() => cache.Clear();
+    public void Invalidate()
+    {
+        cache.Clear();
+        painted = "";
+        paintedBrush = null;
+    }
 
     public SolidColorBrush Brush(string name)
     {
@@ -119,6 +125,27 @@ public sealed class Chrome
         };
         button.Click += (_, _) => click();
         return button;
+    }
+
+    /// <summary>与 mac <c>magnifyingglass</c> 一致的描边放大镜，尺寸对齐 AppIcons.symbol。</summary>
+    public FrameworkElement SearchMark(double size)
+    {
+        const double view = 16;
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M7,3.25 A4,4 0 1,1 7,11.25 A4,4 0 1,1 7,3.25 M10.1,10.1 L13.25,13.25"),
+            Stroke = Brush("text.tertiary"),
+            StrokeThickness = 1.5 * (size / view),
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            Stretch = Stretch.Uniform,
+            Width = size,
+            Height = size,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        return path;
     }
 
     public Border Keycap(string text) => new()
@@ -232,31 +259,79 @@ public sealed class Chrome
         return border;
     }
 
+    string painted = "";
+    Brush? paintedBrush;
+
     public void PaintBackground(Border border, string fill)
     {
         var alpha = Math.Min(1, Math.Max(0.15, Session.Settings.BackgroundOpacity));
         var path = Session.Settings.BackgroundImagePath;
+        var revision = string.IsNullOrEmpty(path) || !File.Exists(path)
+            ? 0
+            : File.GetLastWriteTimeUtc(path).ToFileTimeUtc();
+        var stamp = fill + "|" + path + "|" + revision + "|" + alpha.ToString("0.00") + "|" + Dark;
+        if (painted == stamp && paintedBrush != null)
+        {
+            border.Background = paintedBrush;
+            return;
+        }
+        Brush brush;
         if (!string.IsNullOrEmpty(path) && File.Exists(path))
         {
             try
             {
-                var image = new BitmapImage();
-                image.BeginInit();
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.UriSource = new Uri(path);
-                image.EndInit();
-                image.Freeze();
-                border.Background = new ImageBrush(image) { Stretch = Stretch.UniformToFill, Opacity = alpha };
-                return;
+                var image = LoadBackgroundImage(path);
+                brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill, Opacity = alpha };
             }
             catch (Exception ex)
             {
                 Log.Warn($"背景图无法读取 {ex.Message}");
+                brush = Flat(fill, alpha);
             }
         }
+        else
+        {
+            brush = Flat(fill, alpha);
+        }
 
+        if (brush.CanFreeze)
+        {
+            brush.Freeze();
+        }
+
+        painted = stamp;
+        paintedBrush = brush;
+        border.Background = brush;
+    }
+
+    SolidColorBrush Flat(string fill, double alpha)
+    {
         var color = Brush(fill).Color;
-        border.Background = new SolidColorBrush(MediaColor.FromArgb((byte)(alpha * 255), color.R, color.G, color.B));
+        return new SolidColorBrush(MediaColor.FromArgb((byte)(alpha * 255), color.R, color.G, color.B));
+    }
+
+    static BitmapImage LoadBackgroundImage(string path)
+    {
+        var bytes = File.ReadAllBytes(path);
+        using var stream = new MemoryStream(bytes);
+        var image = new BitmapImage();
+        image.BeginInit();
+        image.CacheOption = BitmapCacheOption.OnLoad;
+        image.StreamSource = stream;
+        image.EndInit();
+        image.Freeze();
+        return image;
+    }
+
+    /// <summary>叠在底图上的半透明色层。mac 快捷启动分组卡片约 42%。</summary>
+    public SolidColorBrush Glass(string token, double layerAlpha)
+    {
+        var backdrop = Math.Min(1, Math.Max(0.15, Session.Settings.BackgroundOpacity));
+        var color = Brush(token).Color;
+        var a = (byte)Math.Clamp(layerAlpha * backdrop * 255, 24, 240);
+        var brush = new SolidColorBrush(MediaColor.FromArgb(a, color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
     }
 
     public Border Card(string title, IReadOnlyList<(string Title, string Detail, UIElement? Control)> rows)
@@ -318,12 +393,19 @@ public sealed class Chrome
         window.WindowStyle = WindowStyle.None;
         window.AllowsTransparency = true;
         window.Background = Brushes.Transparent;
-        window.ShowInTaskbar = false;
+        window.ShowInTaskbar = true;
         window.Topmost = true;
         window.ResizeMode = ResizeMode.NoResize;
+        window.SizeToContent = SizeToContent.Manual;
         window.FontFamily = Font;
         window.UseLayoutRounding = true;
         window.SnapsToDevicePixels = true;
+        var icon = AppIcon.WindowIcon();
+        if (icon != null)
+        {
+            window.Icon = icon;
+        }
+
         window.SourceInitialized += (_, _) =>
         {
             var hwnd = new WindowInteropHelper(window).Handle;
@@ -347,6 +429,133 @@ public sealed class Chrome
         }
     }
 
+    /// <summary>启动器用 Win32 像素框定位，避免 WPF 改高后顶边漂移。</summary>
+    public void PresentLauncher(Window window)
+    {
+        var width = Session.Store.Layout("launcher", "width");
+        var height = Session.Store.Layout("launcher", "defaultHeight");
+        window.Width = width;
+        window.Height = height;
+        Log.Info($"启动器契约尺寸 {width:0}x{height:0}");
+        if (!window.IsVisible)
+        {
+            window.Show();
+        }
+
+        window.UpdateLayout();
+        SetLauncherPlacement(window, Session.Store.Layout("launcher", "topRatio"));
+        window.Activate();
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            NativeMethods.ForceForeground(hwnd);
+        }
+    }
+
+    public bool TryReadFrame(Window window, out NativeMethods.WinRect rect)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            rect = default;
+            return false;
+        }
+
+        return NativeMethods.GetWindowRect(hwnd, out rect);
+    }
+
+    /// <param name="syncWpf">只在呼出锁框时同步 WPF 属性；搜索过程中只打 SetWindowPos，避免布局回写顶边。</param>
+    public void ApplyFrame(Window window, NativeMethods.WinRect rect, bool syncWpf)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        NativeMethods.SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            rect.Left,
+            rect.Top,
+            rect.Width,
+            rect.Height,
+            NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
+        if (syncWpf)
+        {
+            SyncFrameToWpf(window, rect);
+        }
+    }
+
+    void SetLauncherPlacement(Window window, double topRatio)
+    {
+        var hwnd = new WindowInteropHelper(window).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            Place(window, topRatio);
+            return;
+        }
+
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var screen = Session.Settings.MultiScreen switch
+        {
+            "main" => System.Windows.Forms.Screen.PrimaryScreen ?? System.Windows.Forms.Screen.FromPoint(cursor),
+            "last" => System.Windows.Forms.Screen.AllScreens.FirstOrDefault(item => item.DeviceName == Session.Settings.LastScreen)
+                      ?? System.Windows.Forms.Screen.FromPoint(cursor),
+            _ => System.Windows.Forms.Screen.FromPoint(cursor)
+        };
+        Session.Settings.LastScreen = screen.DeviceName;
+        var toDip = DipScale(window);
+        var origin = toDip.Transform(new Point(screen.WorkingArea.Left, screen.WorkingArea.Top));
+        var size = toDip.Transform(new Point(screen.WorkingArea.Width, screen.WorkingArea.Height));
+        const double inset = 16;
+        var left = origin.X + (size.X - window.Width) / 2;
+        var top = origin.Y + size.Y * topRatio;
+        left = Math.Min(Math.Max(left, origin.X + inset), origin.X + size.X - window.Width - inset);
+        top = Math.Min(Math.Max(top, origin.Y + inset), origin.Y + size.Y - window.Height - inset);
+
+        var pos = ToPixels(window, new Point(left, top));
+        var box = ToPixels(window, new Point(window.Width, window.Height));
+        NativeMethods.SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            (int)Math.Round(pos.X),
+            (int)Math.Round(pos.Y),
+            (int)Math.Round(box.X),
+            (int)Math.Round(box.Y),
+            NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate);
+        if (NativeMethods.GetWindowRect(hwnd, out var rect))
+        {
+            SyncFrameToWpf(window, rect);
+        }
+    }
+
+    void SyncFrameToWpf(Window window, NativeMethods.WinRect rect)
+    {
+        var fromDevice = DipScale(window);
+        var topLeft = fromDevice.Transform(new Point(rect.Left, rect.Top));
+        var bottomRight = fromDevice.Transform(new Point(rect.Right, rect.Bottom));
+        window.Left = topLeft.X;
+        window.Top = topLeft.Y;
+        window.Width = Math.Max(1, bottomRight.X - topLeft.X);
+        window.Height = Math.Max(1, bottomRight.Y - topLeft.Y);
+    }
+
+    System.Windows.Forms.Screen ScreenOf(Window window)
+    {
+        Point center;
+        try
+        {
+            center = ToPixels(window, new Point(window.Left + window.Width / 2, window.Top + 8));
+        }
+        catch
+        {
+            center = new Point(System.Windows.Forms.Cursor.Position.X, System.Windows.Forms.Cursor.Position.Y);
+        }
+
+        return System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)center.X, (int)center.Y));
+    }
+
     public void Place(Window window, double topRatio)
     {
         var cursor = System.Windows.Forms.Cursor.Position;
@@ -367,6 +576,73 @@ public sealed class Chrome
         var y = origin.Y + size.Y * topRatio;
         window.Left = Math.Min(Math.Max(x, origin.X + inset), origin.X + size.X - window.Width - inset);
         window.Top = Math.Min(Math.Max(y, origin.Y + inset), origin.Y + size.Y - window.Height - inset);
+    }
+
+    /// <summary>第一次打开快捷启动时，窗口靠近鼠标，而不是回到屏幕固定比例。</summary>
+    public void PlaceNearCursor(Window window)
+    {
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var screen = System.Windows.Forms.Screen.FromPoint(cursor);
+        var toDip = DipScale(window);
+        var mouse = toDip.Transform(new Point(cursor.X, cursor.Y));
+        window.Left = mouse.X - Math.Min(180, window.Width / 3);
+        window.Top = mouse.Y - 36;
+        FitToScreen(window, screen);
+        Log.Info($"快捷启动出现在鼠标附近 {window.Left:0},{window.Top:0}");
+    }
+
+    public void ApplySavedFrame(Window window, double x, double y, double width, double height)
+    {
+        window.Width = Math.Max(window.MinWidth, width);
+        window.Height = Math.Max(window.MinHeight, height);
+        window.Left = x;
+        window.Top = y;
+        var center = ToPixels(window, new Point(window.Left + window.Width / 2, window.Top + window.Height / 2));
+        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)center.X, (int)center.Y));
+        FitToScreen(window, screen);
+    }
+
+    void FitToScreen(Window window, System.Windows.Forms.Screen screen)
+    {
+        var toDip = DipScale(window);
+        var area = screen.WorkingArea;
+        var origin = toDip.Transform(new Point(area.Left, area.Top));
+        var size = toDip.Transform(new Point(area.Width, area.Height));
+        const double inset = 16;
+        if (window.Width > size.X - inset * 2)
+        {
+            window.Width = Math.Max(window.MinWidth, size.X - inset * 2);
+        }
+
+        if (window.Height > size.Y - inset * 2)
+        {
+            window.Height = Math.Max(window.MinHeight, size.Y - inset * 2);
+        }
+
+        window.Left = Math.Min(Math.Max(window.Left, origin.X + inset), origin.X + size.X - window.Width - inset);
+        window.Top = Math.Min(Math.Max(window.Top, origin.Y + inset), origin.Y + size.Y - window.Height - inset);
+    }
+
+    public Point ToPixels(Window window, Point dip)
+    {
+        var source = PresentationSource.FromVisual(window);
+        if (source?.CompositionTarget != null)
+        {
+            return source.CompositionTarget.TransformToDevice.Transform(dip);
+        }
+
+        var scale = 1d;
+        try
+        {
+            using var graphics = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
+            scale = graphics.DpiX / 96d;
+        }
+        catch
+        {
+            scale = 1;
+        }
+
+        return new Point(dip.X * scale, dip.Y * scale);
     }
 
     static Matrix DipScale(Window window)

@@ -40,19 +40,34 @@ public sealed class Shell
             {
                 Launcher.Rebuild();
             }
+
+            if (Groups.IsVisible)
+            {
+                Groups.Render();
+            }
         };
     }
 
     public void ShowLauncher()
     {
+        Chrome.PresentLauncher(Launcher);
+        Launcher.LockFrame();
         Launcher.Rebuild();
-        Chrome.Present(Launcher, Session.Store.Layout("launcher", "topRatio"));
-        Launcher.FocusSearch("呼出");
+        Launcher.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+        {
+            Launcher.LockFrame();
+            Launcher.EnforceFrame();
+            Launcher.FocusSearch("呼出");
+        });
         Launcher.Dispatcher.BeginInvoke(() => Launcher.FocusSearch("呼出延迟"));
         Log.Info($"浮层 {Launcher.Width:0}x{Launcher.Height:0} 状态 {Session.Machine.State}");
     }
 
-    public void HideLauncher() => Launcher.Hide();
+    public void HideLauncher()
+    {
+        Launcher.UnlockFrame();
+        Launcher.Hide();
+    }
 
     public void ShowTools() => Tools.ShowGrid();
 
@@ -62,8 +77,43 @@ public sealed class Shell
 
     public void ShowGroups()
     {
+        var fresh = !Groups.IsVisible;
+        if (fresh)
+        {
+            Groups.Width = Math.Max(760, Groups.Width);
+            Groups.Height = Math.Max(480, Groups.Height);
+            if (Session.Settings.PanelPlacedByUser && Session.Settings.PanelWidth >= 760 && Session.Settings.PanelHeight >= 480)
+            {
+                Chrome.ApplySavedFrame(Groups, Session.Settings.PanelX, Session.Settings.PanelY, Session.Settings.PanelWidth, Session.Settings.PanelHeight);
+            }
+            else
+            {
+                Chrome.PlaceNearCursor(Groups);
+            }
+        }
+
         Groups.Render();
-        Chrome.Present(Groups, 0.12);
+        if (fresh)
+        {
+            Groups.Show();
+        }
+
+        Groups.Activate();
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Groups).Handle;
+        if (hwnd != IntPtr.Zero)
+        {
+            NativeMethods.ForceForeground(hwnd);
+        }
+    }
+
+    public string PanelHotkeyText()
+    {
+        if (Session.Settings.Hotkeys.TryGetValue("panel", out var saved) && saved.Text.Length > 0)
+        {
+            return saved.Text;
+        }
+
+        return Session.Store.FormatChord("windows", "panel");
     }
 
     public void ToggleGroups()

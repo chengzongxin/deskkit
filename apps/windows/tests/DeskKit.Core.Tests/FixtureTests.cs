@@ -14,7 +14,7 @@ public class FixtureTests
         Assert.Equal(64, store.Hash.Length);
         Assert.Equal(store.Hash, ContractStore.HashTree(store.Root));
         Assert.Equal("#9B6CF6", store.GroupColors[3]);
-        Assert.Equal(720, store.Layout("launcher", "width"));
+        Assert.Equal(800, store.Layout("launcher", "width"));
         Assert.Equal(64, store.Layout("launcher", "inputRowHeight"));
     }
 
