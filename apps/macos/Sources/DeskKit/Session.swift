@@ -334,6 +334,21 @@ final class Session {
         onChange()
     }
 
+    func reorderShortcut(_ itemId: String, in groupId: String, before beforeId: String, placeAfter: Bool) {
+        guard itemId != beforeId,
+              let index = library.groups.firstIndex(where: { $0.id == groupId }) else { return }
+        var ids = library.groups[index].itemIds
+        guard let from = ids.firstIndex(of: itemId) else { return }
+        ids.remove(at: from)
+        guard let anchor = ids.firstIndex(of: beforeId) else { return }
+        let insert = placeAfter ? anchor + 1 : anchor
+        ids.insert(itemId, at: min(insert, ids.count))
+        library.groups[index].itemIds = ids
+        save()
+        Log.info("快捷项已在分组内调整顺序")
+        onChange()
+    }
+
     func renameGroup(_ id: String, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = library.groups.firstIndex(where: { $0.id == id }) else {

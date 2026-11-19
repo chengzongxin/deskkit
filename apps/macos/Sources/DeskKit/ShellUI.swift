@@ -106,16 +106,23 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 self.closeSettings()
                 return nil
             }
-            if self.groupsWindow?.isKeyWindow == true, event.keyCode == 53 {
-                if self.renamingGroupId != nil {
-                    self.renamingGroupId = nil
-                    Log.info("Esc 取消重命名分组")
-                    self.renderGroups()
+            if self.groupsWindow?.isKeyWindow == true {
+                let typing = self.renamingGroupId != nil || self.groupsWindow?.firstResponder is NSText
+                if typing {
+                    if event.keyCode == 53, self.renamingGroupId != nil {
+                        self.renamingGroupId = nil
+                        Log.info("Esc 取消重命名分组")
+                        self.renderGroups()
+                        return nil
+                    }
+                    return event
+                }
+                if event.keyCode == 53 {
+                    Log.info("Esc 关闭快捷启动")
+                    self.closeGroups()
                     return nil
                 }
-                Log.info("Esc 关闭快捷启动")
-                self.closeGroups()
-                return nil
+                if self.handleGroupsKey(event) { return nil }
             }
             return event
         }
@@ -127,9 +134,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         blurWork?.cancel()
         rebuildLauncher()
         place(launcher, topRatio: session.store.layout("launcher", "topRatio"))
+        launcher.alphaValue = 0
         launcher.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
         launcher.makeKeyAndOrderFront(nil)
+        fadeIn(launcher)
         focusSearchField(reason: "呼出")
         // 激活时机晚一拍时再抢一次焦点，避免看起来能呼出却打不了字
         DispatchQueue.main.async { [weak self] in
@@ -150,7 +159,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     func hideLauncher() {
         blurWork?.cancel()
-        launcher.orderOut(nil)
+        fadeOut(launcher) { [weak self] in
+            self?.launcher.orderOut(nil)
+        }
     }
 
     func noteHotkey(_ ready: Bool) {
@@ -482,12 +493,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private func drawHome(_ start: CGFloat) -> CGFloat {
         var y = start
         let rows = session.recentHits()
-        let seen = Set(rows.map(\.id))
+            let seen = Set(rows.map(\.id))
         let candidates = Array(session.index.filter { $0.kind == "app" && !seen.contains($0.id) }.prefix(12))
         homeList = rows + candidates
         var number = 1
         if !rows.isEmpty {
-            y = section(y, "最近使用", "\(rows.count) 条")
+        y = section(y, "最近使用", "\(rows.count) 条")
             for hit in rows {
                 y = drawRow(y, hit, number, false, showEnter: false)
                 number += 1
@@ -703,7 +714,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             let right = UI.label(count, 12, .regular, color("text.tertiary"))
             right.frame = NSRect(x: layout.pad + layout.rowW - 80 - 12, y: y, width: 80, height: 22)
             right.alignment = .right
-            body.addSubview(right)
+        body.addSubview(right)
         }
         return y + 26
     }
@@ -811,6 +822,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         dropHighlight = nil
         let preset = NSSize(width: session.store.layout("windows", "panel", "width"), height: session.store.layout("windows", "panel", "height"))
         let window = groupsWindow ?? makeWindow("DeskKit 快捷启动", preset)
+        let savedContent = (window.contentView?.find(id: "panel-content-scroll") as? NSScrollView)?.contentView.bounds.origin
+        let savedNav = (window.contentView?.find(id: "panel-nav-scroll") as? NSScrollView)?.contentView.bounds.origin
         window.minSize = NSSize(width: 760, height: 480)
         window.contentMinSize = window.minSize
         let opening = !window.isVisible
@@ -974,6 +987,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             ly += rowH + rowGap
         }
         let listScroll = NSScrollView(frame: NSRect(x: 0, y: ny, width: navW, height: min(naturalH, listLimit)))
+        listScroll.identifier = NSUserInterfaceItemIdentifier("panel-nav-scroll")
         listScroll.drawsBackground = false
         listScroll.hasVerticalScroller = naturalH > listLimit
         listScroll.autohidesScrollers = true
@@ -991,6 +1005,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         root.addSubview(nav)
 
         let scroll = NSScrollView(frame: NSRect(x: navW, y: headerH, width: size.width - navW, height: size.height - headerH - footerH))
+        scroll.identifier = NSUserInterfaceItemIdentifier("panel-content-scroll")
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -1004,6 +1019,14 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         scroll.autoresizingMask = [.width, .height]
         root.addSubview(scroll)
         drawPanelGroups(into: canvas)
+        if let savedContent {
+            scroll.contentView.scroll(to: savedContent)
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        if let savedNav {
+            listScroll.contentView.scroll(to: savedNav)
+            listScroll.reflectScrolledClipView(listScroll.contentView)
+        }
         applyBackground(to: root)
 
         let foot = WindowDragView(frame: NSRect(x: 0, y: size.height - footerH, width: size.width, height: footerH))
@@ -1064,6 +1087,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             self?.panelNav = id
             self?.renderGroups()
         }
+        let selectedFill = on ? color("accent.soft") : NSColor.clear
+        let hoverFill = color("accent.soft").withAlphaComponent(0.45)
+        row.onHover = { [weak row] inside in
+            row?.layer?.backgroundColor = (inside && !on ? hoverFill : selectedFill).cgColor
+        }
         let labelX: CGFloat = 8
         let label = UI.plain(title, 13, on ? .semibold : .regular, on ? color("accent.hover") : color("text.secondary"))
         label.truncates = true
@@ -1093,10 +1121,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func bindShortcutCell(_ cell: HitRow, item: Shortcut, sourceGroup: String) {
+        cell.identifier = NSUserInterfaceItemIdentifier("cell|\(sourceGroup)|\(item.id)")
         if panelEdit {
             cell.onClick = {}
         } else {
             cell.onClick = { [weak self] in self?.openShortcut(item) }
+        }
+        let hover = color("bg.hover")
+        cell.onHover = { [weak cell] inside in
+            cell?.layer?.backgroundColor = (inside ? hover : NSColor.clear).cgColor
         }
         cell.onRightClick = { [weak self] event in
             self?.showShortcutMoveMenu(itemId: item.id, sourceGroup: sourceGroup, event: event, view: cell)
@@ -1138,20 +1171,88 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private func trackShortcutMove(itemId: String, sourceGroup: String, cell: NSView, event: NSEvent) {
         guard let window = cell.window else { return }
-        cell.alphaValue = 0.45
-        var target: String?
+        cell.wantsLayer = true
+        cell.alphaValue = 0.92
+        cell.layer?.transform = CATransform3DMakeScale(1.05, 1.05, 1)
+        NSCursor.closedHand.push()
+        var moveTarget: String?
+        var reorder: (id: String, after: Bool)?
         while true {
             guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
             if next.type == .leftMouseUp { break }
-            let hover = shortcutGroup(at: next.locationInWindow)
-            target = hover == sourceGroup ? nil : hover
-            showShortcutHover(target)
+            if panelEdit, let hit = shortcutCell(at: next.locationInWindow), hit.group == sourceGroup, hit.item != itemId {
+                moveTarget = nil
+                reorder = (hit.item, hit.after)
+                showShortcutHover(nil)
+                showDragCaption(session.store.text(hit.after ? "shortcut.dropAfter" : "shortcut.dropBefore"), at: next.locationInWindow)
+            } else {
+                reorder = nil
+                let hover = shortcutGroup(at: next.locationInWindow)
+                moveTarget = hover == sourceGroup ? nil : hover
+                showShortcutHover(moveTarget)
+                if let moveTarget, let name = session.library.groups.first(where: { $0.id == moveTarget })?.name {
+                    showDragCaption(session.store.text("shortcut.dropMove", ["name": name]), at: next.locationInWindow)
+                } else {
+                    showDragCaption(nil, at: next.locationInWindow)
+                }
+            }
         }
+        NSCursor.pop()
         cell.alphaValue = 1
+        cell.layer?.transform = CATransform3DIdentity
         showShortcutHover(nil)
-        guard let target else { return }
-        session.moveShortcut(itemId, from: sourceGroup, to: target)
+        showDragCaption(nil, at: .zero)
+        if let reorder {
+            session.reorderShortcut(itemId, in: sourceGroup, before: reorder.id, placeAfter: reorder.after)
+        } else if let moveTarget {
+            session.moveShortcut(itemId, from: sourceGroup, to: moveTarget)
+        } else {
+            return
+        }
         renderGroups()
+    }
+
+    private func shortcutCell(at windowPoint: NSPoint) -> (group: String, item: String, after: Bool)? {
+        guard let root = groupsWindow?.contentView else { return nil }
+        var view = root.hitTest(windowPoint)
+        while let current = view {
+            if let raw = current.identifier?.rawValue, raw.hasPrefix("cell|") {
+                let parts = raw.split(separator: "|", maxSplits: 2).map(String.init)
+                if parts.count == 3 {
+                    let local = current.convert(windowPoint, from: nil)
+                    return (parts[1], parts[2], local.y > current.bounds.midY)
+                }
+            }
+            view = current.superview
+        }
+        return nil
+    }
+
+    private func showDragCaption(_ text: String?, at windowPoint: NSPoint) {
+        guard let root = groupsWindow?.contentView else { return }
+        let label = (root.find(id: "drag-caption") as? NSTextField) ?? {
+            let field = NSTextField(labelWithString: "")
+            field.identifier = NSUserInterfaceItemIdentifier("drag-caption")
+            field.font = UI.font(12, .semibold)
+            field.textColor = color("text.primary")
+            field.wantsLayer = true
+            field.layer?.backgroundColor = color("bg.float").cgColor
+            field.layer?.cornerRadius = 8
+            field.layer?.borderWidth = 1
+            field.layer?.borderColor = color("accent").cgColor
+            field.alignment = .center
+            root.addSubview(field)
+            return field
+        }()
+        guard let text else {
+            label.isHidden = true
+            return
+        }
+        label.isHidden = false
+        label.stringValue = "  \(text)  "
+        label.sizeToFit()
+        let local = root.convert(windowPoint, from: nil)
+        label.frame = NSRect(x: local.x + 16, y: local.y + 18, width: label.frame.width + 8, height: 24)
     }
 
     private func shortcutGroup(at windowPoint: NSPoint) -> String? {
@@ -1460,14 +1561,14 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private func wobble(_ view: NSView, index: Int) {
         view.wantsLayer = true
         let anim = CABasicAnimation(keyPath: "transform.rotation.z")
-        anim.fromValue = -0.04
-        anim.toValue = 0.04
-        anim.duration = 0.12
+        anim.fromValue = -0.015
+        anim.toValue = 0.015
+        anim.duration = 0.14
         anim.autoreverses = true
-        anim.repeatCount = .infinity
+        anim.repeatCount = 6
         anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        anim.timeOffset = Double(index % 2) * 0.06
-        anim.isRemovedOnCompletion = false
+        anim.timeOffset = Double(index % 2) * 0.05
+        anim.isRemovedOnCompletion = true
         view.layer?.add(anim, forKey: "wobble")
     }
 
@@ -2201,7 +2302,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             if !session.triggerWord.isEmpty, let hit = session.hits.first {
                 session.execute(hit: hit)
             } else {
-                session.executeSelection()
+            session.executeSelection()
             }
             return true
         case 53:
@@ -2271,7 +2372,40 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private func dismissGroups() {
         rememberPanelFrame(groupsWindow)
-        groupsWindow?.orderOut(nil)
+        guard let window = groupsWindow else { return }
+        fadeOut(window) { window.orderOut(nil) }
+    }
+
+    private func handleGroupsKey(_ event: NSEvent) -> Bool {
+        let ids = ["all"] + session.library.groups.filter { $0.id != "fav" }.map(\.id)
+        guard let index = ids.firstIndex(of: panelNav) else { return false }
+        switch event.keyCode {
+        case 125:
+            panelNav = ids[min(index + 1, ids.count - 1)]
+            renderGroups()
+            return true
+        case 126:
+            panelNav = ids[max(index - 1, 0)]
+            renderGroups()
+            return true
+        case 36, 76:
+            openFirstShortcut()
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func openFirstShortcut() {
+        let groups = panelNav == "all"
+            ? session.library.groups.filter { $0.id != "fav" }
+            : session.library.groups.filter { $0.id == panelNav }
+        for group in groups {
+            if let id = group.itemIds.first, let item = session.library.items.first(where: { $0.id == id }) {
+                openShortcut(item)
+                return
+            }
+        }
     }
     @objc private func closeSettings() { settingsWindow?.orderOut(nil) }
     @objc private func noop() {}
@@ -2309,8 +2443,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     @objc private func demoQuery(_ sender: NSButton) {
         let q = sender.identifier?.rawValue ?? sender.title
         session.query = q
-        session.search()
-        rebuildLauncher()
+            session.search()
+            rebuildLauncher()
         Log.info("演示查询 \(q)")
     }
 
@@ -2414,10 +2548,10 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     @objc private func copyToolResult() {
         let text = lastToolOutput.isEmpty ? (session.hits.first?.copyText ?? "") : lastToolOutput
         guard !text.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        Log.info("已复制工具结果")
-    }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            Log.info("已复制工具结果")
+        }
 
     @objc private func togglePanelEdit() {
         panelEdit.toggle()
@@ -2466,6 +2600,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         session.library.groups.append(Group(id: id, name: "新分组", color: colorHex, itemIds: []))
         session.save()
         panelNav = id
+        renamingGroupId = id
         renderGroups()
         Log.info("新建分组 \(id) 色 \(colorHex)")
     }
@@ -3405,8 +3540,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         box.layer?.borderColor = color("border.default").cgColor
         if !title.isEmpty {
             let head = UI.label(title, 14, .semibold, color("text.primary"))
-            head.frame = NSRect(x: 16, y: 14, width: 400, height: 20)
-            box.addSubview(head)
+        head.frame = NSRect(x: 16, y: 14, width: 400, height: 20)
+        box.addSubview(head)
         }
         return box
     }
@@ -3617,6 +3752,41 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             return false
         }
     }
+    private var fadeTokens: [ObjectIdentifier: Int] = [:]
+
+    private func motion(_ key: String) -> TimeInterval {
+        session.store.layout("motionMs", key) / 1000
+    }
+
+    private func fadeIn(_ window: NSWindow) {
+        let key = ObjectIdentifier(window)
+        fadeTokens[key, default: 0] += 1
+        let token = fadeTokens[key] ?? 0
+        window.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = motion("show")
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().alphaValue = 1
+        } completionHandler: { [weak self] in
+            guard self?.fadeTokens[key] == token else { return }
+            window.alphaValue = 1
+        }
+    }
+
+    private func fadeOut(_ window: NSWindow, done: @escaping () -> Void) {
+        let key = ObjectIdentifier(window)
+        fadeTokens[key, default: 0] += 1
+        let token = fadeTokens[key] ?? 0
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = motion("blurHide")
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            window.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard self?.fadeTokens[key] == token else { return }
+            done()
+        }
+    }
+
     private func paint(_ view: NSView, _ name: String) {
         view.wantsLayer = true
         view.layer?.backgroundColor = color(name).cgColor
@@ -3655,7 +3825,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 placeNearMouse(window)
             }
         } else if fresh {
-            place(window, topRatio: 0.12)
+        place(window, topRatio: 0.12)
         }
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.hidesOnDeactivate = false
@@ -3663,6 +3833,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         // 从菜单栏点开时，菜单还没关完就前置，窗口会跟着菜单一起被收掉。
         DispatchQueue.main.async {
             guard fresh || window.isVisible else { return }
+            if fresh {
+                window.alphaValue = 0
+            }
             if fresh || !window.isKeyWindow {
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
@@ -3670,6 +3843,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 window.orderFrontRegardless()
             }
             if fresh {
+                self.fadeIn(window)
                 Log.info("窗口已前置 \(window.title) 可见=\(window.isVisible) 位置=\(Int(window.frame.origin.x)),\(Int(window.frame.origin.y))")
             }
         }
@@ -3752,6 +3926,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         guard let view = window.contentView else { return }
         let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         guard let rep else { return }
+        view.window?.alphaValue = 1
         view.cacheDisplay(in: view.bounds, to: rep)
         if let data = rep.representation(using: .png, properties: [:]) {
             try? data.write(to: dir.appendingPathComponent("\(name).png"))

@@ -395,6 +395,7 @@ class HitRow: NSView {
     var onClick: () -> Void = {}
     var onRightClick: ((NSEvent) -> Void)?
     var onLongPress: ((NSEvent) -> Void)?
+    var onHover: ((Bool) -> Void)?
     var swallowsClicks = false
     private var suppressClick = false
     override var isFlipped: Bool { true }
@@ -407,9 +408,17 @@ class HitRow: NSView {
         }
         return self
     }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        let area = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+    }
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
     override func mouseDown(with event: NSEvent) {
         guard let onLongPress, let window else { return }
-        let deadline = Date().addingTimeInterval(0.4)
+        let deadline = Date().addingTimeInterval(0.25)
         while Date() < deadline {
             let remaining = deadline.timeIntervalSinceNow
             guard remaining > 0 else { break }

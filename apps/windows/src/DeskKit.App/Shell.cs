@@ -50,7 +50,10 @@ public sealed class Shell
 
     public void ShowLauncher()
     {
+        Launcher.BeginAnimation(UIElement.OpacityProperty, null);
+        Launcher.Opacity = 0;
         Chrome.PresentLauncher(Launcher);
+        Chrome.FadeIn(Launcher);
         Launcher.LockFrame();
         Launcher.Rebuild();
         Launcher.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
@@ -65,8 +68,11 @@ public sealed class Shell
 
     public void HideLauncher()
     {
-        Launcher.UnlockFrame();
-        Launcher.Hide();
+        Chrome.FadeOut(Launcher, () =>
+        {
+            Launcher.UnlockFrame();
+            Launcher.Hide();
+        });
     }
 
     public void ShowTools() => Tools.ShowGrid();
@@ -95,7 +101,9 @@ public sealed class Shell
         Groups.Render();
         if (fresh)
         {
+            Groups.Opacity = 0;
             Groups.Show();
+            Chrome.FadeIn(Groups);
         }
 
         Groups.Activate();
@@ -120,7 +128,7 @@ public sealed class Shell
     {
         if (Groups.IsVisible)
         {
-            Groups.Hide();
+            Groups.Dismiss();
             Log.Info("热键隐藏快捷启动");
             return;
         }
@@ -194,6 +202,8 @@ public sealed class Shell
 
     static void Snap(string name, Window window, string directory)
     {
+        window.BeginAnimation(UIElement.OpacityProperty, null);
+        window.Opacity = 1;
         window.UpdateLayout();
         var width = Math.Max(1, (int)window.ActualWidth);
         var height = Math.Max(1, (int)window.ActualHeight);

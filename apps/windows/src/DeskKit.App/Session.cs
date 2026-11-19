@@ -446,6 +446,40 @@ public sealed class Session
         OnChange();
     }
 
+    public void ReorderShortcut(string itemId, string groupId, string beforeId, bool placeAfter)
+    {
+        if (itemId == beforeId)
+        {
+            return;
+        }
+
+        var index = Library.Groups.FindIndex(group => group.Id == groupId);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var ids = Library.Groups[index].ItemIds;
+        var from = ids.IndexOf(itemId);
+        if (from < 0)
+        {
+            return;
+        }
+
+        ids.RemoveAt(from);
+        var anchor = ids.IndexOf(beforeId);
+        if (anchor < 0)
+        {
+            return;
+        }
+
+        var insert = placeAfter ? anchor + 1 : anchor;
+        ids.Insert(Math.Min(insert, ids.Count), itemId);
+        Save();
+        Log.Info("快捷项已在分组内调整顺序");
+        OnChange();
+    }
+
     public void RenameGroup(string id, string name)
     {
         var trimmed = name.Trim();

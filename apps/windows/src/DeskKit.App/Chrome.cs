@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using DeskKit.Platform;
@@ -54,6 +55,7 @@ public sealed class Chrome
     static ControlTemplate? flat;
     public Session Session { get; }
     readonly Dictionary<string, SolidColorBrush> cache = new(StringComparer.Ordinal);
+    readonly Dictionary<Window, int> fadeTokens = new();
 
     public Chrome(Session session) => Session = session;
 
@@ -412,6 +414,59 @@ public sealed class Chrome
             var hwnd = new WindowInteropHelper(window).Handle;
             NativeMethods.MakeToolWindow(hwnd);
         };
+    }
+
+    /// <summary>出现 120ms、消失 150ms。后一次动画会使前一次的收尾失效。</summary>
+    public void FadeIn(Window window)
+    {
+        var token = NextFade(window);
+        window.BeginAnimation(UIElement.OpacityProperty, null);
+        window.Opacity = 0;
+        var animation = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(Motion("show")))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (!SameFade(window, token)) return;
+            window.BeginAnimation(UIElement.OpacityProperty, null);
+            window.Opacity = 1;
+        };
+        window.BeginAnimation(UIElement.OpacityProperty, animation);
+    }
+
+    public void FadeOut(Window window, Action done)
+    {
+        var token = NextFade(window);
+        var animation = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(Motion("blurHide")))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (!SameFade(window, token)) return;
+            window.BeginAnimation(UIElement.OpacityProperty, null);
+            window.Opacity = 0;
+            done();
+            window.Opacity = 1;
+        };
+        window.BeginAnimation(UIElement.OpacityProperty, animation);
+    }
+
+    int NextFade(Window window)
+    {
+        fadeTokens.TryGetValue(window, out var token);
+        token++;
+        fadeTokens[window] = token;
+        return token;
+    }
+
+    bool SameFade(Window window, int token) => fadeTokens.TryGetValue(window, out var current) && current == token;
+
+    double Motion(string key)
+    {
+        var ms = Session.Store.Layout("motionMs", key);
+        return ms > 0 ? ms : key == "blurHide" ? 150 : 120;
     }
 
     public void Present(Window window, double topRatio)

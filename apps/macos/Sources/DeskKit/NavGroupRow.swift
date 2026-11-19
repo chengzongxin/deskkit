@@ -17,6 +17,7 @@ final class NavGroupRow: HitRow {
     private let titleSlot = NSView()
     private let countLabel = PlainLabel()
     private var insertAfter = false
+    private var hovered = false
     private var dropActive = false { didSet { refreshChrome() } }
 
     private let handleWidth: CGFloat = 52
@@ -44,6 +45,10 @@ final class NavGroupRow: HitRow {
         addSubview(countLabel)
 
         addSubview(grip)
+        onHover = { [weak self] inside in
+            self?.hovered = inside
+            self?.refreshChrome()
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -176,6 +181,8 @@ final class NavGroupRow: HitRow {
             layer?.backgroundColor = (selected ? accentSoft : NSColor.clear.withAlphaComponent(0.08)).cgColor
         } else if selected {
             layer?.backgroundColor = accentSoft.cgColor
+        } else if hovered {
+            layer?.backgroundColor = accentSoft.withAlphaComponent(0.45).cgColor
         } else {
             layer?.backgroundColor = NSColor.clear.cgColor
         }

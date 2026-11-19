@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using DeskKit.Core;
 using DeskKit.Platform;
@@ -25,6 +26,10 @@ public sealed class GroupsWindow : Window
     Border? dropVeil;
     TextBlock? dropTitle;
     Border? dropHighlight;
+    ScrollViewer? contentScroller;
+    ScrollViewer? navScroller;
+    Border? dragCaption;
+    TextBlock? dragCaptionText;
     Chrome C => shell.Chrome;
     Session S => shell.Session;
 
@@ -39,7 +44,11 @@ public sealed class GroupsWindow : Window
         C.Prepare(this);
         AllowDrop = true;
         DragOver += OnDragOver;
-        DragLeave += (_, _) => HideDropHint();
+        DragLeave += (_, _) =>
+        {
+            HideDropHint();
+            HideDragCaption();
+        };
         Drop += OnDrop;
         PreviewMouseMove += (_, e) => UpdateResizeCursor(e.GetPosition(this));
         PreviewMouseLeftButtonDown += OnPanelMouseDown;
@@ -49,23 +58,101 @@ public sealed class GroupsWindow : Window
     void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key != Key.Escape)
+        var typing = renaming != null || Keyboard.FocusedElement is TextBox;
+        if (key == Key.Escape)
         {
-            return;
-        }
+            if (renaming != null)
+            {
+                renaming = null;
+                Render();
+                e.Handled = true;
+                Log.Info("Esc 取消重命名分组");
+                return;
+            }
 
-        if (renaming != null)
-        {
-            renaming = null;
-            Render();
+            Dismiss();
             e.Handled = true;
-            Log.Info("Esc 取消重命名分组");
+            Log.Info("Esc 关闭快捷启动");
             return;
         }
 
-        Hide();
-        e.Handled = true;
-        Log.Info("Esc 关闭快捷启动");
+        if (typing)
+        {
+            return;
+        }
+
+        if (key == Key.Down)
+        {
+            MoveNav(1);
+            e.Handled = true;
+            return;
+        }
+
+        if (key == Key.Up)
+        {
+            MoveNav(-1);
+            e.Handled = true;
+            return;
+        }
+
+        if (key == Key.Enter)
+        {
+            OpenFirstShortcut();
+            e.Handled = true;
+        }
+    }
+
+    public void Dismiss()
+    {
+        RememberFrame();
+        C.FadeOut(this, Hide);
+    }
+
+    void MoveNav(int delta)
+    {
+        var ids = new List<string> { "all" };
+        ids.AddRange(S.Library.Groups.Where(group => group.Id != "fav").Select(group => group.Id));
+        var index = ids.IndexOf(nav);
+        if (index < 0)
+        {
+            index = 0;
+        }
+
+        var next = Math.Clamp(index + delta, 0, ids.Count - 1);
+        if (ids[next] == nav)
+        {
+            return;
+        }
+
+        nav = ids[next];
+        Render();
+    }
+
+    void OpenFirstShortcut()
+    {
+        var groups = nav == "all"
+            ? S.Library.Groups.Where(group => group.Id != "fav")
+            : S.Library.Groups.Where(group => group.Id == nav);
+        foreach (var group in groups)
+        {
+            var item = ItemsFor(group).FirstOrDefault();
+            if (item == null)
+            {
+                continue;
+            }
+
+            try
+            {
+                Session.Open(item.Path);
+                S.TouchRecentFromPath(item.Path, item.Kind, item.Title);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"打开失败 {ex.Message}");
+            }
+
+            return;
+        }
     }
 
     public void Render()
@@ -75,6 +162,8 @@ public sealed class GroupsWindow : Window
             nav = "all";
         }
 
+        var savedContent = contentScroller?.VerticalOffset ?? 0;
+        var savedNav = navScroller?.VerticalOffset ?? 0;
         rendering = true;
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
@@ -83,7 +172,7 @@ public sealed class GroupsWindow : Window
 
         var headerDock = new DockPanel { Margin = new Thickness(16, 0, 8, 0) };
         EnableDrag(headerDock);
-        var close = PanelIconButton(Glyph.Close, Hide);
+        var close = PanelIconButton(Glyph.Close, Dismiss);
         var gear = PanelIconButton(Glyph.Gear, () => shell.ShowSettings());
         DockPanel.SetDock(close, Dock.Right);
         DockPanel.SetDock(gear, Dock.Right);
@@ -162,6 +251,7 @@ public sealed class GroupsWindow : Window
         };
         navScroll.DragOver += NavScrollDragOver;
         navScroll.Drop += NavScrollDrop;
+        navScroller = navScroll;
         navBody.Children.Add(navScroll);
         var navPane = new Border
         {
@@ -181,6 +271,7 @@ public sealed class GroupsWindow : Window
             Background = Brushes.Transparent
         };
         Grid.SetColumn(scroll, 1);
+        contentScroller = scroll;
         body.Children.Add(scroll);
         Grid.SetRow(body, 1);
         root.Children.Add(body);
@@ -234,7 +325,30 @@ public sealed class GroupsWindow : Window
         };
         Grid.SetRowSpan(dropVeil, 3);
         root.Children.Add(dropVeil);
+        dragCaptionText = C.Label("", 12, FontWeights.SemiBold, "text.primary");
+        dragCaption = new Border
+        {
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Padding = new Thickness(8, 4, 8, 4),
+            CornerRadius = new CornerRadius(8),
+            Background = C.Brush("bg.float"),
+            BorderBrush = C.Brush("accent"),
+            BorderThickness = new Thickness(1),
+            Child = dragCaptionText
+        };
+        Grid.SetRowSpan(dragCaption, 3);
+        root.Children.Add(dragCaption);
         Content = C.Float(root, "bg.canvas");
+        var contentTarget = contentScroller;
+        var navTarget = navScroller;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            contentTarget?.ScrollToVerticalOffset(savedContent);
+            navTarget?.ScrollToVerticalOffset(savedNav);
+        });
         rendering = false;
         Log.Info($"打开快捷启动面板 {Width:0}x{Height:0}");
     }
@@ -253,6 +367,12 @@ public sealed class GroupsWindow : Window
             Cursor = Cursors.Hand,
             AllowDrop = library
         };
+        if (!on)
+        {
+            var hoverFill = HoverSoft();
+            row.MouseEnter += (_, _) => row.Background = hoverFill;
+            row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
+        }
         var grid = new DockPanel { Margin = new Thickness(10, 0, 8, 0) };
         var number = C.Label(count.ToString(), 11, FontWeights.Normal, "text.tertiary");
         DockPanel.SetDock(number, Dock.Right);
@@ -838,6 +958,15 @@ public sealed class GroupsWindow : Window
         label.TextAlignment = TextAlignment.Center;
         cell.Children.Add(icon);
         cell.Children.Add(label);
+        cell.Tag = "cell|" + sourceGroup + "|" + item.Id;
+        cell.Background = Brushes.Transparent;
+        var hoverFill = C.Brush("bg.hover");
+        cell.MouseEnter += (_, _) => cell.Background = hoverFill;
+        cell.MouseLeave += (_, _) => cell.Background = Brushes.Transparent;
+        if (edit)
+        {
+            Wobble(cell);
+        }
         if (edit)
         {
             var del = new Border
@@ -903,15 +1032,32 @@ public sealed class GroupsWindow : Window
                 return;
             }
 
-            if ((DateTime.UtcNow - pressedAt).TotalMilliseconds < 380)
+            if ((DateTime.UtcNow - pressedAt).TotalMilliseconds < 250)
             {
                 return;
             }
 
             dragging = true;
+            Lift(cell);
             var data = new System.Windows.DataObject("deskkit-shortcut", item.Id + "\n" + sourceGroup);
-            DragDrop.DoDragDrop(cell, data, DragDropEffects.Move);
+            try
+            {
+                DragDrop.DoDragDrop(cell, data, DragDropEffects.Move);
+            }
+            finally
+            {
+                Settle(cell);
+                HideDragCaption();
+                HideDropHint();
+            }
+
             e.Handled = true;
+        };
+        cell.GiveFeedback += (_, feedback) =>
+        {
+            feedback.UseDefaultCursors = false;
+            Mouse.SetCursor(Cursors.Hand);
+            feedback.Handled = true;
         };
 
         cell.MouseLeftButtonUp += (_, e) =>
@@ -1015,6 +1161,7 @@ public sealed class GroupsWindow : Window
         S.Library.Groups.Add(new Group { Id = id, Name = "新分组", Color = color, ItemIds = [] });
         S.Save();
         nav = id;
+        renaming = id;
         Render();
         Log.Info($"新建分组 {id} 色 {color}");
     }
@@ -1054,19 +1201,30 @@ public sealed class GroupsWindow : Window
 
     void OnDragOver(object sender, DragEventArgs e)
     {
-        if (ShortcutDrag(e, out _, out var from))
+        if (ShortcutDrag(e, out var movingId, out var from))
         {
+            e.Handled = true;
+            HideDropHint();
+            if (edit && CellUnder(e) is { } cell && cell.Group == from && cell.Item != movingId)
+            {
+                e.Effects = DragDropEffects.Move;
+                ShowDragCaption(S.Store.Text(cell.After ? "shortcut.dropAfter" : "shortcut.dropBefore"), e);
+                return;
+            }
+
             var hover = GroupUnder(e);
             var canMove = hover != null && hover != from;
             e.Effects = canMove ? DragDropEffects.Move : DragDropEffects.None;
-            e.Handled = true;
             if (canMove)
             {
-                ShowDropHint(hover!, moving: true);
+                var name = S.Library.Groups.FirstOrDefault(group => group.Id == hover)?.Name ?? hover!;
+                ShowDragCaption(S.Store.Text("shortcut.dropMove", new Dictionary<string, string> { ["name"] = name }), e);
+                HighlightGroup(hover);
             }
             else
             {
-                HideDropHint();
+                HideDragCaption();
+                HighlightGroup(null);
             }
 
             return;
@@ -1089,11 +1247,19 @@ public sealed class GroupsWindow : Window
     {
         if (ShortcutDrag(e, out var movingId, out var from))
         {
-            var hover = GroupUnder(e);
             HideDropHint();
-            if (hover != null && hover != from)
+            HideDragCaption();
+            if (edit && CellUnder(e) is { } cell && cell.Group == from && cell.Item != movingId)
             {
-                S.MoveShortcut(movingId, from, hover);
+                S.ReorderShortcut(movingId, from, cell.Item, cell.After);
+            }
+            else
+            {
+                var hover = GroupUnder(e);
+                if (hover != null && hover != from)
+                {
+                    S.MoveShortcut(movingId, from, hover);
+                }
             }
 
             e.Handled = true;
@@ -1334,6 +1500,119 @@ public sealed class GroupsWindow : Window
         }
 
         return S.Library.Groups.FirstOrDefault()?.Id ?? "ungrouped";
+    }
+
+    (string Group, string Item, bool After)? CellUnder(DragEventArgs e)
+    {
+        var hit = VisualTreeHelper.HitTest(this, e.GetPosition(this))?.VisualHit as DependencyObject;
+        while (hit != null)
+        {
+            if (hit is FrameworkElement element && element.Tag is string tag && tag.StartsWith("cell|", StringComparison.Ordinal))
+            {
+                var parts = tag.Split('|', 3);
+                if (parts.Length == 3)
+                {
+                    var y = e.GetPosition(element).Y;
+                    return (parts[1], parts[2], y > element.ActualHeight / 2);
+                }
+            }
+
+            hit = VisualTreeHelper.GetParent(hit);
+        }
+
+        return null;
+    }
+
+    void ShowDragCaption(string text, DragEventArgs e)
+    {
+        if (dragCaption == null || dragCaptionText == null)
+        {
+            return;
+        }
+
+        var point = e.GetPosition(this);
+        dragCaptionText.Text = text;
+        dragCaption.Margin = new Thickness(point.X + 16, point.Y + 18, 0, 0);
+        dragCaption.Visibility = Visibility.Visible;
+    }
+
+    void HideDragCaption()
+    {
+        if (dragCaption != null)
+        {
+            dragCaption.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    SolidColorBrush HoverSoft()
+    {
+        var color = C.Brush("accent.soft").Color;
+        var brush = new SolidColorBrush(Color.FromArgb(115, color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
+    }
+
+    static void Wobble(FrameworkElement cell)
+    {
+        var rotate = new RotateTransform();
+        var scale = new ScaleTransform(1, 1);
+        cell.RenderTransformOrigin = new Point(0.5, 0.5);
+        cell.RenderTransform = new TransformGroup { Children = { scale, rotate } };
+        var animation = new DoubleAnimation(-0.86, 0.86, TimeSpan.FromSeconds(0.14))
+        {
+            AutoReverse = true,
+            RepeatBehavior = new RepeatBehavior(6),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+        };
+        rotate.BeginAnimation(RotateTransform.AngleProperty, animation);
+    }
+
+    static void Lift(FrameworkElement cell)
+    {
+        if (cell.RenderTransform is not TransformGroup group)
+        {
+            var scale = new ScaleTransform(1.05, 1.05);
+            cell.RenderTransformOrigin = new Point(0.5, 0.5);
+            cell.RenderTransform = scale;
+        }
+        else
+        {
+            foreach (var child in group.Children)
+            {
+                if (child is ScaleTransform scale)
+                {
+                    scale.ScaleX = 1.05;
+                    scale.ScaleY = 1.05;
+                }
+            }
+        }
+
+        cell.Opacity = 0.92;
+    }
+
+    static void Settle(FrameworkElement cell)
+    {
+        cell.Opacity = 1;
+        if (cell.RenderTransform is ScaleTransform only)
+        {
+            only.ScaleX = 1;
+            only.ScaleY = 1;
+            return;
+        }
+
+        if (cell.RenderTransform is not TransformGroup group)
+        {
+            return;
+        }
+
+        foreach (var child in group.Children)
+        {
+            if (child is ScaleTransform scale)
+            {
+                scale.ScaleX = 1;
+                scale.ScaleY = 1;
+            }
+        }
     }
 
     void ShowDropHint(string groupId, bool moving = false)
