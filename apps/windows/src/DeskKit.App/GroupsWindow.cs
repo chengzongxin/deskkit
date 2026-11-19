@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
@@ -22,6 +23,14 @@ public sealed class GroupsWindow : Window
     bool rendering;
     bool resizing;
     bool navInsertAfter;
+    bool menuUsed;
+    bool navReorderArmed;
+    string? navPressId;
+    string? navReorderTarget;
+    Border? navPressRow;
+    Point navPressPoint;
+    DispatcherTimer? navArmTimer;
+    int blurGeneration;
     Border? navDropHint;
     Border? dropVeil;
     TextBlock? dropTitle;
@@ -42,6 +51,8 @@ public sealed class GroupsWindow : Window
         MinWidth = 760;
         MinHeight = 480;
         C.Prepare(this);
+        Deactivated += (_, _) => OnBlur();
+        Activated += (_, _) => blurGeneration++;
         AllowDrop = true;
         DragOver += OnDragOver;
         DragLeave += (_, _) =>
@@ -108,6 +119,64 @@ public sealed class GroupsWindow : Window
         C.FadeOut(this, Hide);
     }
 
+    async void OnBlur()
+    {
+        if (!S.Settings.BlurHide || !IsVisible || shell.SuppressBlur)
+        {
+            return;
+        }
+
+        var token = ++blurGeneration;
+        await Task.Delay(150);
+        if (token != blurGeneration || IsActive || !IsVisible || shell.SuppressBlur)
+        {
+            return;
+        }
+
+        Log.Info("点击快捷启动窗口外，隐藏面板");
+        Dismiss();
+    }
+
+    void KeepOpenWhileMenu(ContextMenu menu)
+    {
+        menu.Opened += (_, _) => shell.SuppressBlur = true;
+        WatchMenu(menu.Items);
+        menu.Closed += (_, _) =>
+        {
+            shell.SuppressBlur = false;
+            if (menuUsed)
+            {
+                Activate();
+            }
+            else
+            {
+                OnBlur();
+            }
+
+            menuUsed = false;
+        };
+    }
+
+    void WatchMenu(ItemCollection items)
+    {
+        foreach (var item in items)
+        {
+            if (item is not MenuItem entry)
+            {
+                continue;
+            }
+
+            if (entry.Items.Count == 0)
+            {
+                entry.Click += (_, _) => menuUsed = true;
+            }
+            else
+            {
+                WatchMenu(entry.Items);
+            }
+        }
+    }
+
     void MoveNav(int delta)
     {
         var ids = new List<string> { "all" };
@@ -145,6 +214,7 @@ public sealed class GroupsWindow : Window
             {
                 Session.Open(item.Path);
                 S.TouchRecentFromPath(item.Path, item.Kind, item.Title);
+                Dismiss();
             }
             catch (Exception ex)
             {
@@ -370,29 +440,25 @@ public sealed class GroupsWindow : Window
         if (!on)
         {
             var hoverFill = HoverSoft();
-            row.MouseEnter += (_, _) => row.Background = hoverFill;
-            row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
+            row.MouseEnter += (_, _) =>
+            {
+                if (navPressRow != row)
+                {
+                    row.Background = hoverFill;
+                }
+            };
+            row.MouseLeave += (_, _) =>
+            {
+                if (navPressRow != row)
+                {
+                    row.Background = Brushes.Transparent;
+                }
+            };
         }
         var grid = new DockPanel { Margin = new Thickness(10, 0, 8, 0) };
         var number = C.Label(count.ToString(), 11, FontWeights.Normal, "text.tertiary");
         DockPanel.SetDock(number, Dock.Right);
         grid.Children.Add(number);
-        if (library)
-        {
-            var grip = new Border
-            {
-                Width = 18,
-                ToolTip = "拖动排序",
-                Background = Brushes.Transparent,
-                Cursor = Cursors.SizeAll,
-                Tag = "nav-grip",
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = C.Label("⋮⋮", 11, FontWeights.Normal, "text.tertiary")
-            };
-            grip.MouseLeftButtonDown += (_, e) => StartNavReorderDrag(row, id, e);
-            DockPanel.SetDock(grip, Dock.Right);
-            grid.Children.Add(grip);
-        }
         if (color != null)
         {
             var dot = new Ellipse { Width = 6, Height = 6, Fill = new SolidColorBrush(Chrome.Paint(color)), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -464,11 +530,14 @@ public sealed class GroupsWindow : Window
                 menu.Items.Add(deleteItem);
             }
 
+            KeepOpenWhileMenu(menu);
             row.ContextMenu = menu;
             row.DragOver += NavDragOver;
             row.Drop += NavRowDrop;
             row.DragLeave += (_, _) => ClearNavDropHint();
-            row.MouseLeftButtonUp += (_, e) => SelectNavUnlessGrip(id, e);
+            row.PreviewMouseLeftButtonDown += (_, e) => BeginNavPress(row, id, e);
+            row.PreviewMouseMove += (_, e) => NavPressMove(row, e);
+            row.PreviewMouseLeftButtonUp += (_, e) => EndNavPress(row, id, e);
         }
         else
         {
@@ -480,48 +549,157 @@ public sealed class GroupsWindow : Window
 
     static bool IsLibraryNavId(string id) => id is not "all";
 
-    void SelectNavUnlessGrip(string id, MouseButtonEventArgs e)
+    void BeginNavPress(Border row, string id, MouseButtonEventArgs e)
     {
-        if (IsNavGrip(e.OriginalSource as DependencyObject))
+        if (e.OriginalSource is TextBox || renaming == id)
         {
             return;
         }
 
-        nav = id;
-        Render();
+        navPressRow = row;
+        navPressId = id;
+        navPressPoint = e.GetPosition(row);
+        navReorderArmed = false;
+        navReorderTarget = null;
+        row.CaptureMouse();
+        navArmTimer?.Stop();
+        navArmTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        navArmTimer.Tick += (_, _) =>
+        {
+            navArmTimer?.Stop();
+            if (navPressId == id && Mouse.LeftButton == MouseButtonState.Pressed)
+            {
+                ArmNavReorder(row);
+            }
+        };
+        navArmTimer.Start();
+        e.Handled = true;
     }
 
-    static bool IsNavGrip(DependencyObject? source)
+    void NavPressMove(Border row, System.Windows.Input.MouseEventArgs e)
     {
-        while (source != null)
+        if (navPressId == null || navPressRow != row || e.LeftButton != MouseButtonState.Pressed)
         {
-            if (source is FrameworkElement element && element.Tag as string == "nav-grip")
+            return;
+        }
+
+        var moved = e.GetPosition(row) - navPressPoint;
+        if (!navReorderArmed && moved.Length > 10)
+        {
+            ArmNavReorder(row);
+        }
+
+        if (!navReorderArmed || navScroller == null)
+        {
+            return;
+        }
+
+        var y = e.GetPosition(navScroller).Y;
+        if (y < 28)
+        {
+            navScroller.ScrollToVerticalOffset(navScroller.VerticalOffset - 16);
+        }
+        else if (y > navScroller.ActualHeight - 28)
+        {
+            navScroller.ScrollToVerticalOffset(navScroller.VerticalOffset + 16);
+        }
+
+        if (TryFindNearestNavRow(navScroller, e.GetPosition(navScroller), out var target, out var after) && target.Name != navPressId)
+        {
+            navReorderTarget = target.Name;
+            navInsertAfter = after;
+            ShowNavInsertHint(target, after);
+        }
+
+        e.Handled = true;
+    }
+
+    void EndNavPress(Border row, string id, MouseButtonEventArgs e)
+    {
+        if (navPressId != id)
+        {
+            return;
+        }
+
+        var armed = navReorderArmed;
+        var target = navReorderTarget;
+        var after = navInsertAfter;
+        ResetNavPress(row);
+        if (armed && target != null && target != id)
+        {
+            S.ReorderGroup(id, target, after);
+        }
+        else
+        {
+            nav = id;
+            Render();
+        }
+
+        e.Handled = true;
+    }
+
+    void ArmNavReorder(Border row)
+    {
+        if (navReorderArmed)
+        {
+            return;
+        }
+
+        navReorderArmed = true;
+        navArmTimer?.Stop();
+        row.Opacity = 0.55;
+        row.Cursor = Cursors.SizeAll;
+    }
+
+    void ResetNavPress(Border row)
+    {
+        navArmTimer?.Stop();
+        navPressId = null;
+        navPressRow = null;
+        navReorderArmed = false;
+        navReorderTarget = null;
+        row.Opacity = 1;
+        row.Cursor = Cursors.Hand;
+        row.ReleaseMouseCapture();
+        ClearNavDropHint();
+    }
+
+    bool TryFindNearestNavRow(ScrollViewer scroll, Point point, out Border row, out bool after)
+    {
+        row = null!;
+        after = false;
+        if (scroll.Content is not StackPanel list)
+        {
+            return false;
+        }
+
+        Border? nearest = null;
+        var best = double.MaxValue;
+        foreach (var child in list.Children.OfType<Border>())
+        {
+            if (!IsLibraryNavId(child.Name))
             {
-                return true;
+                continue;
             }
 
-            source = VisualTreeHelper.GetParent(source);
+            var topLeft = child.TranslatePoint(new Point(0, 0), scroll);
+            var mid = topLeft.Y + child.ActualHeight / 2;
+            var distance = Math.Abs(point.Y - mid);
+            if (distance < best)
+            {
+                best = distance;
+                nearest = child;
+                after = point.Y > mid;
+            }
         }
 
-        return false;
-    }
-
-    void StartNavReorderDrag(Border row, string id, MouseButtonEventArgs e)
-    {
-        row.Opacity = 0.5;
-        var data = new System.Windows.DataObject("deskkit-group", id);
-        try
+        if (nearest == null)
         {
-            DragDrop.DoDragDrop(row, data, DragDropEffects.Move);
-        }
-        catch (InvalidOperationException)
-        {
-            // 拖放被打断时忽略
+            return false;
         }
 
-        row.Opacity = 1;
-        ClearNavDropHint();
-        e.Handled = true;
+        row = nearest;
+        return true;
     }
 
     void NavRowDrop(object sender, DragEventArgs e)
@@ -986,10 +1164,7 @@ public sealed class GroupsWindow : Window
             };
             del.MouseLeftButtonUp += (_, e) =>
             {
-                S.Library.Items.RemoveAll(entry => entry.Id == item.Id);
-                foreach (var group in S.Library.Groups) group.ItemIds.RemoveAll(id => id == item.Id);
-                S.Save();
-                Render();
+                RemoveShortcut(item.Id);
                 e.Handled = true;
             };
             cell.Children.Add(del);
@@ -1011,6 +1186,27 @@ public sealed class GroupsWindow : Window
         }
 
         menu.Items.Add(move);
+        var reveal = new MenuItem
+        {
+            Header = S.Store.Text("shortcut.reveal"),
+            IsEnabled = item.Kind != "url" && !string.IsNullOrWhiteSpace(item.Path)
+        };
+        reveal.Click += (_, _) =>
+        {
+            try
+            {
+                Session.Reveal(item.Path);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"打开所在文件夹失败 {ex.Message}");
+            }
+        };
+        menu.Items.Add(reveal);
+        var remove = new MenuItem { Header = S.Store.Text("shortcut.delete") };
+        remove.Click += (_, _) => RemoveShortcut(item.Id);
+        menu.Items.Add(remove);
+        KeepOpenWhileMenu(menu);
         cell.ContextMenu = menu;
 
         var pressedAt = DateTime.UtcNow;
@@ -1067,11 +1263,24 @@ public sealed class GroupsWindow : Window
             {
                 Session.Open(item.Path);
                 S.TouchRecentFromPath(item.Path, item.Kind, item.Title);
+                Dismiss();
             }
             catch (Exception ex) { Log.Warn($"打开失败 {ex.Message}"); }
             e.Handled = true;
         };
         return cell;
+    }
+
+    void RemoveShortcut(string id)
+    {
+        S.Library.Items.RemoveAll(entry => entry.Id == id);
+        foreach (var group in S.Library.Groups)
+        {
+            group.ItemIds.RemoveAll(itemId => itemId == id);
+        }
+
+        S.Save();
+        Render();
     }
 
     static bool IsCellDelete(DependencyObject? source)
@@ -1137,7 +1346,11 @@ public sealed class GroupsWindow : Window
             ["name"] = group.Name,
             ["count"] = group.ItemIds.Count.ToString()
         });
-        if (MessageBox.Show(body, S.Store.Text("group.deleteTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        shell.SuppressBlur = true;
+        var answer = MessageBox.Show(body, S.Store.Text("group.deleteTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        shell.SuppressBlur = false;
+        Activate();
+        if (answer != MessageBoxResult.Yes)
         {
             return;
         }

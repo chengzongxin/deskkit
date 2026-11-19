@@ -40,6 +40,8 @@
     "shortcut.dropMove": "松手移动到「{name}」",
     "shortcut.dropAfter": "松手排到后面",
     "shortcut.dropBefore": "松手排到前面",
+    "shortcut.reveal": "打开所在文件夹",
+    "shortcut.delete": "删除",
     "panel.footer": "拖入即可添加 · {hotkey} 唤出 · 共 {count} 项",
     "empty.clipboard": "还没有复制记录，复制任意内容后这里会出现",
     "empty.clipboardAction": "去试试",

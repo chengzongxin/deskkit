@@ -81,11 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ),
             HotkeyChord(
                 name: "panel",
-                keyCode: Int64(panel?.keyCode ?? 49),
+                keyCode: Int64(panel?.keyCode ?? 2),
                 alt: panel?.alt ?? true,
                 command: panel?.command ?? false,
                 control: panel?.control ?? false,
-                shift: panel?.shift ?? true,
+                shift: panel?.shift ?? false,
                 onFire: { [weak self] in self?.shell.toggleGroups() }
             )
         ])

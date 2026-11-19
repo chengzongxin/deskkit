@@ -111,6 +111,7 @@ public static class HotkeyMap
 
         return keyCode switch
         {
+            2 => 0x44,
             49 => 0x20,
             36 => 0x0D,
             48 => 0x09,

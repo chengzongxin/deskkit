@@ -149,8 +149,8 @@ public partial class App : Application
         var ok = hotkey.TryRegister(settings.SummonAlt, settings.SummonControl, settings.SummonShift, settings.SummonCommand, vk);
         var panel = settings.Hotkeys.TryGetValue("panel", out var panelBinding) ? panelBinding : null;
         var panelRecorded = panel != null;
-        var panelVk = HotkeyMap.ToVirtualKey(panel?.KeyCode ?? 49, panelRecorded);
-        var panelOk = hotkey.TryRegisterPanel(panel?.Alt ?? true, panel?.Control ?? false, panel?.Shift ?? true, panel?.Command ?? false, panelVk);
+        var panelVk = HotkeyMap.ToVirtualKey(panel?.KeyCode ?? 2, panelRecorded);
+        var panelOk = hotkey.TryRegisterPanel(panel?.Alt ?? true, panel?.Control ?? false, panel?.Shift ?? false, panel?.Command ?? false, panelVk);
         shell.NoteHotkey(ok);
         if (groupsItem != null)
         {

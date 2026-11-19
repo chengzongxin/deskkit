@@ -53,6 +53,10 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private var toolWindow: NSWindow?
     private var groupsWindow: NSWindow?
+    private var groupsBlurArmed = false
+    private var groupsBlurWork: DispatchWorkItem?
+    private var suspendGroupsBlur = false
+    private var groupsMenuUsed = false
     private var settingsWindow: NSWindow?
     private var guideWindow: NSWindow?
 
@@ -1054,6 +1058,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         installPanelDrop(drop)
         groupsWindow = window
+        watchGroupsBlur(window)
         if let liveFrame {
             window.setFrame(liveFrame, display: false)
         }
@@ -1117,7 +1122,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             del.representedObject = id
             menu.addItem(del)
         }
-        NSMenu.popUpContextMenu(menu, with: event, for: view)
+        popGroupsMenu(menu, event: event, view: view)
     }
 
     private func bindShortcutCell(_ cell: HitRow, item: Shortcut, sourceGroup: String) {
@@ -1158,10 +1163,85 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         move.submenu = submenu
         menu.addItem(move)
+        if let item = session.library.items.first(where: { $0.id == itemId }) {
+            let reveal = NSMenuItem(title: session.store.text("shortcut.reveal"), action: #selector(menuRevealShortcut(_:)), keyEquivalent: "")
+            reveal.target = self
+            reveal.representedObject = itemId
+            reveal.isEnabled = item.kind != "url" && !item.path.isEmpty
+            menu.addItem(reveal)
+        }
+        let remove = NSMenuItem(title: session.store.text("shortcut.delete"), action: #selector(menuDeleteShortcut(_:)), keyEquivalent: "")
+        remove.target = self
+        remove.representedObject = itemId
+        menu.addItem(remove)
+        popGroupsMenu(menu, event: event, view: view)
+    }
+
+    private func watchGroupsBlur(_ window: NSWindow) {
+        guard !groupsBlurArmed else { return }
+        groupsBlurArmed = true
+        NotificationCenter.default.addObserver(self, selector: #selector(groupsResigned), name: NSWindow.didResignKeyNotification, object: window)
+    }
+
+    @objc private func groupsResigned() {
+        guard session.settings.blurHide, !suspendGroupsBlur else { return }
+        guard let window = groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
+        groupsBlurWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.suspendGroupsBlur else { return }
+            guard let window = self.groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
+            Log.info("点击快捷启动窗口外，隐藏面板")
+            self.dismissGroups()
+        }
+        groupsBlurWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func popGroupsMenu(_ menu: NSMenu, event: NSEvent, view: NSView) {
+        suspendGroupsBlur = true
         NSMenu.popUpContextMenu(menu, with: event, for: view)
+        suspendGroupsBlur = false
+        guard let window = groupsWindow, window.isVisible else { return }
+        if groupsMenuUsed {
+            window.makeKeyAndOrderFront(nil)
+        } else if !window.isKeyWindow {
+            dismissGroups()
+        }
+        groupsMenuUsed = false
+    }
+
+    @objc private func menuRevealShortcut(_ sender: NSMenuItem) {
+        groupsMenuUsed = true
+        guard let itemId = sender.representedObject as? String,
+              let item = session.library.items.first(where: { $0.id == itemId }) else { return }
+        revealShortcut(item)
+    }
+
+    @objc private func menuDeleteShortcut(_ sender: NSMenuItem) {
+        groupsMenuUsed = true
+        guard let itemId = sender.representedObject as? String else { return }
+        removeShortcut(id: itemId)
+    }
+
+    private func revealShortcut(_ item: Shortcut) {
+        guard item.kind != "url", !item.path.isEmpty else { return }
+        let url = URL(fileURLWithPath: item.path)
+        if FileManager.default.fileExists(atPath: item.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            Log.info("打开所在文件夹 \(item.title)")
+            return
+        }
+        let folder = url.deletingLastPathComponent()
+        if FileManager.default.fileExists(atPath: folder.path) {
+            NSWorkspace.shared.open(folder)
+            Log.info("原文件已不在，打开上级文件夹 \(folder.path)")
+            return
+        }
+        Log.warn("找不到所在文件夹 \(item.path)")
     }
 
     @objc private func menuMoveShortcut(_ sender: NSMenuItem) {
+        groupsMenuUsed = true
         guard let move = sender.representedObject as? ShortcutMove else { return }
         session.moveShortcut(move.itemId, from: move.from, to: move.to)
         renderGroups()
@@ -1291,11 +1371,13 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     @objc private func menuRenameGroup(_ sender: NSMenuItem) {
+        groupsMenuUsed = true
         renamingGroupId = sender.representedObject as? String
         renderGroups()
     }
 
     @objc private func menuDeleteGroup(_ sender: NSMenuItem) {
+        groupsMenuUsed = true
         guard let id = sender.representedObject as? String else { return }
         confirmDeleteGroup(id: id)
     }
@@ -2371,6 +2453,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     @objc private func closeGroups() { dismissGroups() }
 
     private func dismissGroups() {
+        groupsBlurWork?.cancel()
         rememberPanelFrame(groupsWindow)
         guard let window = groupsWindow else { return }
         fadeOut(window) { window.orderOut(nil) }
@@ -2583,7 +2666,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         alert.alertStyle = .warning
         alert.addButton(withTitle: "删除")
         alert.addButton(withTitle: "取消")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        suspendGroupsBlur = true
+        let answer = alert.runModal()
+        suspendGroupsBlur = false
+        groupsWindow?.makeKeyAndOrderFront(nil)
+        guard answer == .alertFirstButtonReturn else { return }
         session.deleteGroup(id)
         if panelNav == id {
             panelNav = "all"
@@ -2640,8 +2727,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private func openShortcut(_ item: Shortcut) {
         if item.kind == "url", let url = URL(string: item.path), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-            NSWorkspace.shared.open(url)
-            Log.info("打开网址快捷项 \(item.title)")
+            let opened = NSWorkspace.shared.open(url)
+            Log.info(opened ? "打开网址快捷项 \(item.title)" : "打开失败 \(item.path)")
+            if opened { dismissGroups() }
             return
         }
         if !FileManager.default.fileExists(atPath: item.path) {
@@ -2649,6 +2737,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         let opened = NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
         Log.info(opened ? "打开快捷项 \(item.title)" : "打开失败 \(item.path)")
+        if opened { dismissGroups() }
     }
 
     private func installPanelDrop(_ root: PanelDropView) {
@@ -3820,6 +3909,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private func present(_ window: NSWindow) {
         let fresh = !window.isVisible
+        if window === groupsWindow { groupsBlurWork?.cancel() }
         if fresh, window === groupsWindow {
             if !session.settings.panelPlacedByUser {
                 placeNearMouse(window)

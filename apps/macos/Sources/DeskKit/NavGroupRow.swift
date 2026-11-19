@@ -4,14 +4,13 @@ extension NSPasteboard.PasteboardType {
     static let deskkitGroup = NSPasteboard.PasteboardType("deskkit-group")
 }
 
-/// 侧栏分组行：点击选择，右侧握把手动拖放排序，右键菜单。
+/// 侧栏分组行：短按选择，整行长按后拖动排序，右键菜单。
 final class NavGroupRow: HitRow {
     var groupId = ""
     var selected = false { didSet { refreshChrome() } }
     var accentSoft: NSColor = .clear
     var accent: NSColor = .systemBlue
 
-    private let grip = NavGroupGripView()
     private let insertLine = NSView()
     private let dot = NSView()
     private let titleSlot = NSView()
@@ -20,10 +19,8 @@ final class NavGroupRow: HitRow {
     private var hovered = false
     private var dropActive = false { didSet { refreshChrome() } }
 
-    private let handleWidth: CGFloat = 52
-    private let gripWidth: CGFloat = 22
     private let countWidth: CGFloat = 28
-    private let trailingPad: CGFloat = 6
+    private let trailingPad: CGFloat = 8
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -44,7 +41,6 @@ final class NavGroupRow: HitRow {
         countLabel.alignment = .right
         addSubview(countLabel)
 
-        addSubview(grip)
         onHover = { [weak self] inside in
             self?.hovered = inside
             self?.refreshChrome()
@@ -56,10 +52,6 @@ final class NavGroupRow: HitRow {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     weak var parentList: GroupNavListView?
-
-    var reorderHandle: NSRect {
-        NSRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
-    }
 
     func apply(
         title: String,
@@ -126,8 +118,7 @@ final class NavGroupRow: HitRow {
     override func layout() {
         super.layout()
         let h = bounds.height
-        grip.frame = NSRect(x: bounds.width - gripWidth - trailingPad, y: (h - 22) / 2, width: gripWidth, height: 22)
-        countLabel.frame = NSRect(x: grip.frame.minX - 4 - countWidth, y: 0, width: countWidth, height: h)
+        countLabel.frame = NSRect(x: bounds.width - trailingPad - countWidth, y: 0, width: countWidth, height: h)
 
         let dotSize: CGFloat = 6
         var titleX: CGFloat = 8
@@ -145,36 +136,44 @@ final class NavGroupRow: HitRow {
 
     override func resetCursorRects() {
         super.resetCursorRects()
-        addCursorRect(reorderHandle, cursor: .openHand)
+        addCursorRect(bounds, cursor: .openHand)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
-        if reorderHandle.contains(local) {
-            return grip.hitTest(grip.convert(local, from: self)) ?? grip
-        }
-        for child in subviews.reversed() where child !== insertLine && child !== grip {
-            if let hit = child.hitTest(local) { return hit }
+        if let field = titleSlot.subviews.compactMap({ $0 as? NSTextField }).first {
+            let inField = titleSlot.convert(local, from: self)
+            if let hit = field.hitTest(inField) { return hit }
         }
         return self
     }
 
     override func mouseDown(with event: NSEvent) {
-        let local = convert(event.locationInWindow, from: nil)
-        guard reorderHandle.contains(local) else { return }
+        guard let window, !groupId.isEmpty else { return }
+        let start = event.locationInWindow
+        let deadline = Date().addingTimeInterval(0.18)
+        while Date() < deadline {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { break }
+            guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: Date().addingTimeInterval(remaining), inMode: .eventTracking, dequeue: true) else {
+                break
+            }
+            if next.type == .leftMouseUp {
+                onClick()
+                return
+            }
+            let dx = next.locationInWindow.x - start.x
+            let dy = next.locationInWindow.y - start.y
+            if (dx * dx + dy * dy) > 100 {
+                parentList?.trackReorder(from: self, event: next)
+                return
+            }
+        }
         parentList?.trackReorder(from: self, event: event)
     }
 
-    override func mouseUp(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        if parentList?.consumedClickForReorder == true {
-            parentList?.consumedClickForReorder = false
-            return
-        }
-        if reorderHandle.contains(point) { return }
-        onClick()
-    }
+    override func mouseUp(with event: NSEvent) {}
 
     private func refreshChrome() {
         if dropActive {
@@ -215,22 +214,16 @@ final class GroupNavListView: FlippedView {
     func trackReorder(from row: NavGroupRow, event: NSEvent) {
         guard let window = row.window, !row.groupId.isEmpty else { return }
         let sourceId = row.groupId
-        row.alphaValue = 0.45
+        row.alphaValue = 0.55
         consumedClickForReorder = true
         var target: (String, Bool)?
         Log.info("开始侧栏分组排序拖动 source=\(sourceId)")
+        follow(event, sourceId: sourceId, target: &target)
 
         while true {
             guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
             if next.type == .leftMouseUp { break }
-            let point = convert(next.locationInWindow, from: nil)
-            if let hit = hitRow(at: point), hit.row.groupId != sourceId {
-                showInsertHint(row: hit.row, after: hit.after)
-                target = (hit.row.groupId, hit.after)
-            } else {
-                clearInsertHint()
-                target = nil
-            }
+            follow(next, sourceId: sourceId, target: &target)
         }
 
         row.alphaValue = 1
@@ -242,11 +235,47 @@ final class GroupNavListView: FlippedView {
         }
     }
 
-    private func hitRow(at point: NSPoint) -> (row: NavGroupRow, after: Bool)? {
-        for row in rows where row.frame.contains(point) {
-            return (row, point.y > row.frame.midY)
+    private func follow(_ event: NSEvent, sourceId: String, target: inout (String, Bool)?) {
+        autoScroll(toward: event)
+        let point = convert(event.locationInWindow, from: nil)
+        if let hit = nearestRow(at: point), hit.row.groupId != sourceId {
+            showInsertHint(row: hit.row, after: hit.after)
+            target = (hit.row.groupId, hit.after)
         }
-        return nil
+    }
+
+    private func nearestRow(at point: NSPoint) -> (row: NavGroupRow, after: Bool)? {
+        var nearest: NavGroupRow?
+        var best = CGFloat.greatestFiniteMagnitude
+        var after = false
+        for row in rows {
+            let distance = abs(point.y - row.frame.midY)
+            if distance < best {
+                best = distance
+                nearest = row
+                after = point.y > row.frame.midY
+            }
+        }
+        guard let nearest else { return nil }
+        return (nearest, after)
+    }
+
+    private func autoScroll(toward event: NSEvent) {
+        guard let scroll = enclosingScrollView else { return }
+        let visible = scroll.contentView.bounds
+        let local = scroll.contentView.convert(event.locationInWindow, from: nil)
+        let edge: CGFloat = 28
+        var origin = visible.origin
+        if local.y < visible.minY + edge {
+            origin.y = max(0, origin.y - 16)
+        } else if local.y > visible.maxY - edge {
+            let limit = max(0, bounds.height - visible.height)
+            origin.y = min(limit, origin.y + 16)
+        } else {
+            return
+        }
+        scroll.contentView.scroll(to: origin)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     private func showInsertHint(row: NavGroupRow, after: Bool) {
@@ -260,42 +289,5 @@ final class GroupNavListView: FlippedView {
     private func clearInsertHint() {
         hintRow?.clearInsert()
         hintRow = nil
-    }
-}
-
-private final class NavGroupGripView: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        toolTip = "拖动排序"
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    override var isFlipped: Bool { true }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let local = convert(point, from: superview)
-        return bounds.contains(local) ? self : nil
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let text = "⋮⋮" as NSString
-        let font = NSFont.systemFont(ofSize: 11)
-        let size = text.size(withAttributes: [.font: font])
-        let rect = NSRect(
-            x: (bounds.width - size.width) / 2,
-            y: (bounds.height - size.height) / 2,
-            width: size.width,
-            height: size.height
-        )
-        text.draw(in: rect, withAttributes: [
-            .font: font,
-            .foregroundColor: NSColor.secondaryLabelColor
-        ])
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard let row = superview as? NavGroupRow else { return }
-        row.parentList?.trackReorder(from: row, event: event)
     }
 }
