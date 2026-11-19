@@ -222,11 +222,6 @@ public sealed class LauncherWindow : Window
 
     void DrawHome()
     {
-        if (S.Clips.Count > 0 && S.Clips[0].Id != S.Settings.DismissedClip)
-        {
-            body.Children.Add(ClipCard(S.Clips[0]));
-        }
-
         var rows = S.RecentHits();
         var seen = rows.Select(hit => hit.Id).ToHashSet(StringComparer.Ordinal);
         var candidates = S.Index.Where(hit => hit.Kind == "app" && !seen.Contains(hit.Id)).Take(12).ToList();
@@ -427,58 +422,6 @@ public sealed class LauncherWindow : Window
             Background = new SolidColorBrush(Color.FromArgb(230, plate.R, plate.G, plate.B)),
             Child = stack
         });
-    }
-
-    UIElement ClipCard(Clip clip)
-    {
-        var card = new Border
-        {
-            Margin = new Thickness(12, 8, 12, 4),
-            Padding = new Thickness(14, 8, 8, 8),
-            Background = C.Brush("accent.soft"),
-            BorderBrush = C.Brush("accent"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            ClipToBounds = true
-        };
-        var row = new Grid();
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        buttons.Children.Add(C.Soft("翻译", () =>
-        {
-            S.Query = "fy " + clip.Text;
-            S.Search();
-            Rebuild();
-        }));
-        buttons.Children.Add(C.Soft("剪贴板", () => shell.ShowTool("clipboard")));
-        var dismiss = C.Soft("忽略", () =>
-        {
-            S.Settings.DismissedClip = clip.Id;
-            S.Save();
-            Rebuild();
-        });
-        dismiss.Margin = new Thickness(0);
-        buttons.Children.Add(dismiss);
-        var text = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        text.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var heading = C.Label("刚复制了文本 · 可用翻译 / 剪贴板处理", 12, FontWeights.SemiBold, "accent.hover");
-        var preview = clip.Text.Replace("\r", " ").Replace("\n", " ");
-        if (preview.Length > 48)
-        {
-            preview = preview[..48];
-        }
-
-        var detail = C.Label(preview, 12, FontWeights.Normal, "text.secondary");
-        Grid.SetRow(detail, 1);
-        text.Children.Add(heading);
-        text.Children.Add(detail);
-        Grid.SetColumn(buttons, 1);
-        row.Children.Add(text);
-        row.Children.Add(buttons);
-        card.Child = row;
-        return card;
     }
 
     void Section(string title, string count)

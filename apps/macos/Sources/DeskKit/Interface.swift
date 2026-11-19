@@ -71,13 +71,18 @@ class FlippedView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// 顶栏、底栏和侧栏空白处按住可以拖动窗口。不改命中测试，按钮和列表仍由自己接收点击。
+/// 顶栏、底栏和侧栏空白处按住可以拖动窗口。禁止 `mouseDownCanMoveWindow`，否则子视图里的拖拽排序会被当成挪窗口。
 final class WindowDragView: FlippedView {
     var onDragEnd: (() -> Void)?
 
-    override var mouseDownCanMoveWindow: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     override func mouseDown(with event: NSEvent) {
+        let local = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(local) else { return }
+        if let hit = hitTest(local), hit !== self {
+            return
+        }
         guard let window else { return }
         window.performDrag(with: event)
         onDragEnd?()
@@ -386,7 +391,7 @@ final class KeycapControl: NSControl {
     }
 }
 
-final class HitRow: NSView {
+class HitRow: NSView {
     var onClick: () -> Void = {}
     var onRightClick: ((NSEvent) -> Void)?
     var swallowsClicks = false
@@ -394,10 +399,9 @@ final class HitRow: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
-        if !swallowsClicks {
-            for child in subviews.reversed() where child is NSControl {
-                if let hit = child.hitTest(local) { return hit }
-            }
+        if swallowsClicks { return self }
+        for child in subviews.reversed() {
+            if let hit = child.hitTest(local) { return hit }
         }
         return self
     }

@@ -23,7 +23,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     let session: Session
 
     private let launcher = KeyPanel(
-        contentRect: NSRect(x: 0, y: 0, width: 720, height: 360),
+        contentRect: NSRect(x: 0, y: 0, width: 800, height: 360),
         styleMask: [.borderless, .fullSizeContentView],
         backing: .buffered,
         defer: false
@@ -155,7 +155,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     func toggleGroups() {
         if groupsWindow?.isVisible == true {
-            groupsWindow?.orderOut(nil)
+            dismissGroups()
             Log.info("热键隐藏快捷启动")
             return
         }
@@ -289,7 +289,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         field.font = cell.font
         field.textColor = color("text.primary")
         field.delegate = self
-        field.frame = NSRect(x: 44, y: mid(36), width: 500, height: 36)
+        field.frame = NSRect(x: 44, y: mid(36), width: 400, height: 36)
         field.placeholderAttributedString = NSAttributedString(
             string: session.store.text("launcher.placeholder"),
             attributes: [.font: field.font as Any, .foregroundColor: color("text.tertiary")]
@@ -302,18 +302,18 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         clearButton.contentTintColor = color("text.tertiary")
         clearButton.target = self
         clearButton.action = #selector(clearQuery)
-        clearButton.frame = NSRect(x: 604, y: mid(28), width: 28, height: 28)
+        clearButton.frame = NSRect(x: 500, y: mid(28), width: 28, height: 28)
         clearButton.isHidden = true
         launcherRoot.addSubview(clearButton)
 
         let gear = symbolButton("gearshape", #selector(showSettingsFromLauncher))
         gear.identifier = NSUserInterfaceItemIdentifier("chrome-gear")
-        gear.frame = NSRect(x: 640, y: mid(28), width: 28, height: 28)
+        gear.frame = NSRect(x: 536, y: mid(28), width: 28, height: 28)
         launcherRoot.addSubview(gear)
 
         let close = symbolButton("xmark", #selector(hideFromButton))
         close.identifier = NSUserInterfaceItemIdentifier("chrome-close")
-        close.frame = NSRect(x: 676, y: mid(28), width: 28, height: 28)
+        close.frame = NSRect(x: 572, y: mid(28), width: 28, height: 28)
         launcherRoot.addSubview(close)
 
         let divider = NSView(frame: NSRect(x: 0, y: 63, width: width, height: 1))
@@ -325,7 +325,10 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         bodyScroll.drawsBackground = false
         bodyScroll.hasVerticalScroller = true
         bodyScroll.autohidesScrollers = true
+        bodyScroll.scrollerStyle = .overlay
         bodyScroll.borderType = .noBorder
+        bodyScroll.automaticallyAdjustsContentInsets = false
+        bodyScroll.scrollerInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 10)
         bodyScroll.clipsToBounds = true
         bodyScroll.contentView.clipsToBounds = true
         bodyScroll.documentView = body
@@ -341,11 +344,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         footLine.wantsLayer = true
         footLine.layer?.backgroundColor = color("border.default").cgColor
         footerBar.addSubview(footLine)
-        footerHints.frame = NSRect(x: 12, y: 0, width: 590, height: 32)
+        footerHints.frame = NSRect(x: 12, y: 0, width: 500, height: 32)
         footerBar.addSubview(footerHints)
         footerLeft.frame = NSRect(x: 16, y: 8, width: 520, height: 16)
         footerLeft.isHidden = true
-        footerBrand.frame = NSRect(x: 620, y: 8, width: 84, height: 16)
+        footerBrand.frame = NSRect(x: width - 100, y: 8, width: 84, height: 16)
         footerBrand.alignment = .right
         footerBar.addSubview(footerLeft)
         footerBar.addSubview(footerBrand)
@@ -356,12 +359,14 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             self.onAskHotkeyAccess()
         }
         footerBar.addSubview(footHit)
+        layoutLauncherChrome()
     }
 
     func rebuildLauncher() {
         let width = session.store.layout("launcher", "width")
         let triggered = !session.triggerWord.isEmpty
         let raw = triggered ? session.payload : session.query
+        layoutLauncherChrome()
 
         capsuleSlot.subviews.forEach { $0.removeFromSuperview() }
         if triggered {
@@ -369,10 +374,10 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             capsuleSlot.frame = NSRect(x: 44, y: 18, width: pill.frame.width, height: 28)
             capsuleSlot.addSubview(pill)
             let fieldX = capsuleSlot.frame.maxX + 8
-            field.frame = NSRect(x: fieldX, y: 14, width: max(80, 596 - fieldX), height: 36)
+            field.frame = NSRect(x: fieldX, y: 14, width: max(80, clearButton.frame.minX - 8 - fieldX), height: 36)
         } else {
             capsuleSlot.frame = NSRect(x: 44, y: 18, width: 0, height: 28)
-            field.frame = NSRect(x: 44, y: 14, width: 552, height: 36)
+            field.frame = NSRect(x: 44, y: 14, width: max(80, clearButton.frame.minX - 8 - 44), height: 36)
         }
         if field.stringValue != raw { field.stringValue = raw }
         let prompt = triggered
@@ -413,6 +418,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         launcherRoot.frame = NSRect(x: 0, y: 0, width: width, height: height)
         body.frame = NSRect(x: 0, y: 0, width: width, height: max(contentH, 1))
         bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 96))
+        bodyScroll.scrollerInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 10)
         let viewport = bodyScroll.frame.height
         let scrollKey = session.query + "|" + session.triggerWord
         if scrollKey != listScrollKey {
@@ -464,11 +470,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     private func drawHome(_ start: CGFloat) -> CGFloat {
         var y = start
-        let showingClip = session.clips.first.map { $0.id != session.settings.dismissedClip } ?? false
-        if showingClip, let clip = session.clips.first {
-            y = drawClipCard(y, clip)
-        }
-
         let rows = session.recentHits()
         let seen = Set(rows.map(\.id))
         let candidates = Array(session.index.filter { $0.kind == "app" && !seen.contains($0.id) }.prefix(12))
@@ -525,7 +526,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let word = session.triggerWord
         let payload = session.payload
         let tr = session.resolveTrigger(word)
-        let head = FlippedView(frame: NSRect(x: 16, y: y, width: 688, height: 32))
+        let layout = launcherLayout()
+        let head = FlippedView(frame: NSRect(x: layout.edge, y: y, width: layout.rowW, height: 32))
         let lock = UI.label("触发词 \(word) · 工具独占视图", 12, .semibold, color("text.secondary"))
         lock.frame = NSRect(x: 0, y: 6, width: 320, height: 18)
         head.addSubview(lock)
@@ -535,12 +537,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             head.addSubview(tag)
         }
         let exit = softButton("退出胶囊", #selector(dropTrigger))
-        exit.frame = NSRect(x: 580, y: 2, width: 100, height: 28)
+        exit.frame = NSRect(x: layout.pad + layout.rowW - 100, y: 2, width: 100, height: 28)
         head.addSubview(exit)
         body.addSubview(head)
         y += 40
 
-        let card = FlippedView(frame: NSRect(x: 16, y: y, width: 688, height: 180))
+        let card = FlippedView(frame: NSRect(x: layout.edge, y: y, width: layout.rowW, height: 180))
         card.wantsLayer = true
         card.layer?.backgroundColor = color("bg.float").cgColor
         card.layer?.cornerRadius = 10
@@ -642,7 +644,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func drawEmpty(_ start: CGFloat) -> CGFloat {
-        let ico = NSView(frame: NSRect(x: 332, y: start + 24, width: 56, height: 56))
+        let layout = launcherLayout()
+        let w = layout.width
+        let ico = NSView(frame: NSRect(x: (w - 56) / 2, y: start + 24, width: 56, height: 56))
         ico.wantsLayer = true
         ico.layer?.cornerRadius = 28
         ico.layer?.backgroundColor = color("bg.subtle").cgColor
@@ -656,7 +660,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let q = session.query
         let title = UI.label("没有找到与 “\(q)” 相关的内容", 13, .regular, color("text.secondary"))
         title.alignment = .center
-        title.frame = NSRect(x: 80, y: start + 92, width: 560, height: 22)
+        title.frame = NSRect(x: layout.pad, y: start + 92, width: layout.rowW, height: 22)
         body.addSubview(title)
 
         let actions: [(String, Selector, Bool)] = [
@@ -664,7 +668,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             ("清空重来", #selector(clearQuery), false),
             ("查看全部工具", #selector(showToolsFromLauncher), false)
         ]
-        var x: CGFloat = 150
+        let totalW: CGFloat = 130 * 3 + 10 * 2
+        var x: CGFloat = (w - totalW) / 2
         for action in actions {
             let button = action.2 ? primaryButton(action.0, action.1) : softButton(action.0, action.1)
             button.frame = NSRect(x: x, y: start + 128, width: 130, height: 30)
@@ -673,47 +678,19 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         let tip = UI.label("\(session.store.formatChord(platform: "macos", action: "escape")) 逐级回退 · 也可以试试 wx / kzmb / 123*4", 11, .regular, color("text.tertiary"))
         tip.alignment = .center
-        tip.frame = NSRect(x: 80, y: start + 172, width: 560, height: 16)
+        tip.frame = NSRect(x: layout.pad, y: start + 172, width: layout.rowW, height: 16)
         body.addSubview(tip)
         return start + 210
     }
 
-    private func drawClipCard(_ y: CGFloat, _ clip: Clip) -> CGFloat {
-        let card = FlippedView(frame: NSRect(x: 12, y: y, width: 696, height: 56))
-        card.wantsLayer = true
-        card.layer?.backgroundColor = color("accent.soft").cgColor
-        card.layer?.cornerRadius = 10
-        card.layer?.borderWidth = 1
-        card.layer?.borderColor = color("accent").cgColor
-        let title = UI.label("刚复制了文本 · 可用翻译 / 剪贴板处理", 12, .semibold, color("accent.hover"))
-        title.frame = NSRect(x: 14, y: 8, width: 360, height: 18)
-        let sub = UI.label(String(clip.text.prefix(48)), 12, .regular, color("text.secondary"))
-        sub.frame = NSRect(x: 14, y: 28, width: 360, height: 16)
-        card.addSubview(title)
-        card.addSubview(sub)
-        let names = [("翻译", "translate", 64), ("剪贴板", "clipboard", 72), ("忽略", "dismiss", 56)]
-        var x = card.bounds.width - 12
-        for item in names.reversed() {
-            x -= CGFloat(item.2)
-            let button = softButton(item.0, #selector(clipAction(_:)))
-            button.identifier = NSUserInterfaceItemIdentifier(item.1)
-            button.frame = NSRect(x: x, y: 16, width: CGFloat(item.2), height: 28)
-            card.addSubview(button)
-            x -= 8
-        }
-        title.frame.size.width = x - 20
-        sub.frame.size.width = x - 20
-        body.addSubview(card)
-        return y + 64
-    }
-
     private func section(_ y: CGFloat, _ title: String, _ count: String) -> CGFloat {
+        let layout = launcherLayout()
         let left = UI.label(title, 12, .semibold, color("text.tertiary"))
-        left.frame = NSRect(x: 16, y: y, width: 420, height: 22)
+        left.frame = NSRect(x: layout.edge, y: y, width: layout.rowW - 100, height: 22)
         body.addSubview(left)
         if !count.isEmpty {
             let right = UI.label(count, 12, .regular, color("text.tertiary"))
-            right.frame = NSRect(x: 620, y: y, width: 80, height: 22)
+            right.frame = NSRect(x: layout.pad + layout.rowW - 80 - 12, y: y, width: 80, height: 22)
             right.alignment = .right
             body.addSubview(right)
         }
@@ -721,14 +698,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func drawRow(_ y: CGFloat, _ hit: Hit, _ index: Int, _ selected: Bool, showEnter: Bool) -> CGFloat {
+        let layout = launcherLayout()
         let rowHeight: CGFloat = session.settings.density == "compact" ? 40 : 48
-        let row = HitRow(frame: NSRect(x: 8, y: y, width: 704, height: rowHeight))
+        let row = HitRow(frame: NSRect(x: layout.pad, y: y, width: layout.rowW, height: rowHeight))
         row.swallowsClicks = true
         row.wantsLayer = true
         row.layer?.backgroundColor = (selected ? color("bg.selected") : NSColor.clear).cgColor
         row.layer?.cornerRadius = 8
         if selected {
-            let bar = NSView(frame: NSRect(x: 0, y: 0, width: 3, height: 48))
+            let bar = NSView(frame: NSRect(x: 0, y: 0, width: 3, height: rowHeight))
             bar.wantsLayer = true
             bar.layer?.backgroundColor = color("accent").cgColor
             row.addSubview(bar)
@@ -747,7 +725,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let alt = altLabel()
         let badge = index <= 9 ? "\(alt)\(index)" : "\(index)"
         let badgeW = KeycapLabel.width(for: badge)
-        let number = KeycapLabel(frame: NSRect(x: 688 - badgeW, y: 14, width: badgeW, height: 20))
+        let badgeX = layout.rowW - badgeW - 12
+        let number = KeycapLabel(frame: NSRect(x: badgeX, y: 14, width: badgeW, height: 20))
         number.text = badge
         number.tint = selected ? color("accent.hover") : color("text.secondary")
         number.border = selected ? color("accent") : color("border.default")
@@ -759,7 +738,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             enter.frame = NSRect(x: number.frame.minX - 22, y: 14, width: 18, height: 20)
             row.addSubview(enter)
         }
-        let textRight = (showEnter ? number.frame.minX - 26 : number.frame.minX) - 8
+        let textRight = (showEnter ? number.frame.minX - 26 : number.frame.minX) - 12
         title.frame.size.width = textRight - title.frame.minX
         sub.frame.size.width = textRight - sub.frame.minX
         row.onClick = { [weak self] in self?.session.execute(hit: hit) }
@@ -776,13 +755,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func drawChips(_ y: CGFloat, _ items: [(String, Selector)]) -> CGFloat {
-        var x: CGFloat = 16
+        let layout = launcherLayout()
+        var x: CGFloat = layout.edge
         var rowY = y
+        let wrap = layout.pad + layout.rowW
         for item in items {
             let chip = softButton(item.0, item.1)
             let w = chipWidth(item.0, floor: 72)
-            if x + w > 704 {
-                x = 16
+            if x + w > wrap {
+                x = layout.edge
                 rowY += 34
             }
             chip.frame = NSRect(x: x, y: rowY, width: w, height: 28)
@@ -793,14 +774,16 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func drawDemoChips(_ y: CGFloat, _ demos: [String]) -> CGFloat {
-        var x: CGFloat = 16
+        let layout = launcherLayout()
+        var x: CGFloat = layout.edge
         var rowY = y
+        let wrap = layout.pad + layout.rowW
         for demo in demos {
             let chip = softButton(demo, #selector(demoQuery(_:)))
             chip.identifier = NSUserInterfaceItemIdentifier(demo)
             let w = chipWidth(demo, floor: 44)
-            if x + w > 704 {
-                x = 16
+            if x + w > wrap {
+                x = layout.edge
                 rowY += 34
             }
             chip.frame = NSRect(x: x, y: rowY, width: w, height: 28)
@@ -819,10 +802,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let window = groupsWindow ?? makeWindow("DeskKit 快捷启动", preset)
         window.minSize = NSSize(width: 760, height: 480)
         window.contentMinSize = window.minSize
-        if session.settings.panelPlacedByUser {
+        let opening = !window.isVisible
+        let liveFrame = opening ? nil : window.frame
+        if opening, session.settings.panelPlacedByUser {
             applySavedPanelFrame(window)
         }
-        let size = window.frame.size
+        let size = (liveFrame?.size ?? window.frame.size)
         // 完全透明的窗口收不到访达拖放。外层画出圆角底，并留一点点不透明，拖拽才能命中。
         let drop = PanelDropView(frame: NSRect(origin: .zero, size: size))
         drop.fill = color("bg.canvas")
@@ -837,7 +822,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
         let headerH: CGFloat = 48
         let footerH: CGFloat = 36
-        let edge: CGFloat = 16
+        let edge = uiEdge()
         let gap: CGFloat = 8
         let controlH: CGFloat = 28
         let controlY = (headerH - controlH) / 2
@@ -932,16 +917,53 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         paint(nav, "bg.float")
         var ny: CGFloat = 16
         let head = UI.plain("分组", 11, .semibold, color("text.tertiary"))
-        head.frame = NSRect(x: edge, y: ny, width: navW - 32, height: 16)
+        head.frame = NSRect(x: edge, y: ny, width: navW - edge * 2, height: 16)
         nav.addSubview(head)
         ny += 28
         let total = session.library.items.count
         ny = navItem(nav, ny, navW, "all", "全部", total, nil)
-        for group in session.library.groups where group.id != "fav" {
-            ny = navItem(nav, ny, navW, group.id, group.name, group.itemIds.count, Theme.paint(group.color))
+
+        let rowH: CGFloat = 36
+        let rowGap: CGFloat = 4
+        let groups = session.library.groups.filter { $0.id != "fav" }
+        let listH = groups.isEmpty ? 0 : CGFloat(groups.count) * (rowH + rowGap) - rowGap
+        let list = GroupNavListView(frame: NSRect(x: 0, y: ny, width: navW, height: listH))
+        list.onReorder = { [weak self] source, target, after in
+            self?.session.reorderGroup(source, relativeTo: target, placeAfter: after)
+            self?.renderGroups()
         }
+        var ly: CGFloat = 0
+        for group in groups {
+            let groupRow = NavGroupRow(frame: NSRect(x: edge, y: ly, width: navW - edge * 2, height: rowH))
+            groupRow.groupId = group.id
+            groupRow.selected = panelNav == group.id
+            groupRow.accentSoft = color("accent.soft")
+            groupRow.accent = color("accent")
+            let titleColor = panelNav == group.id ? color("accent.hover") : color("text.secondary")
+            groupRow.apply(
+                title: group.name,
+                count: group.itemIds.count,
+                dotColor: Theme.paint(group.color),
+                titleColor: titleColor,
+                countColor: color("text.tertiary"),
+                renaming: renamingGroupId == group.id,
+                renameTarget: self,
+                renameAction: #selector(commitGroupName(_:)),
+                renameId: "rename-\(group.id)"
+            )
+            groupRow.onRightClick = { [weak self] event in self?.showGroupMenu(id: group.id, event: event, view: groupRow) }
+            groupRow.onClick = { [weak self] in
+                self?.panelNav = group.id
+                self?.renderGroups()
+            }
+            list.addRow(groupRow)
+            ly += rowH + rowGap
+        }
+        nav.addSubview(list)
+        ny += listH
+
         let add = softButton("新建分组", #selector(addGroup))
-        add.frame = NSRect(x: 8, y: 8, width: navW - 16, height: 34)
+        add.frame = NSRect(x: edge, y: edge, width: navW - edge * 2, height: 34)
         add.autoresizingMask = [.width, .maxYMargin]
         nav.addSubview(add)
         nav.autoresizingMask = [.height]
@@ -955,7 +977,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         scroll.scrollerStyle = .overlay
         scroll.borderType = .noBorder
         scroll.automaticallyAdjustsContentInsets = false
-        scroll.contentInsets = NSEdgeInsetsZero
+        scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: scrollGutter)
         let canvas = FlippedView(frame: NSRect(x: 0, y: 0, width: scroll.frame.width, height: 10))
         canvas.autoresizingMask = [.width]
         scroll.documentView = canvas
@@ -996,6 +1018,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         installPanelDrop(drop)
         groupsWindow = window
+        if let liveFrame {
+            window.setFrame(liveFrame, display: false)
+        }
         present(window)
         if let id = renamingGroupId {
             DispatchQueue.main.async { [weak self] in
@@ -1017,64 +1042,22 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private func navItem(_ nav: NSView, _ y: CGFloat, _ navW: CGFloat, _ id: String, _ title: String, _ count: Int, _ dot: NSColor?) -> CGFloat {
         let on = panelNav == id
         let rowH: CGFloat = 36
-        let library = id != "all"
-        let row: HitRow
-        if library {
-            let groupRow = NavGroupRow(frame: NSRect(x: 8, y: y, width: navW - 16, height: rowH))
-            groupRow.groupId = id
-            groupRow.selected = on
-            groupRow.accentSoft = color("accent.soft")
-            groupRow.accent = color("accent")
-            groupRow.onReorder = { [weak self] source, target, after in
-                self?.session.reorderGroup(source, relativeTo: target, placeAfter: after)
-                self?.renderGroups()
-            }
-            groupRow.onRightClick = { [weak self] event in self?.showGroupMenu(id: id, event: event, view: groupRow) }
-            groupRow.onClick = { [weak self] in
-                self?.panelNav = id
-                self?.renderGroups()
-            }
-            row = groupRow
-        } else {
-            let plain = HitRow(frame: NSRect(x: 8, y: y, width: navW - 16, height: rowH))
-            plain.wantsLayer = true
-            plain.layer?.cornerRadius = 8
-            plain.layer?.backgroundColor = (on ? color("accent.soft") : NSColor.clear).cgColor
-            plain.onClick = { [weak self] in
-                self?.panelNav = id
-                self?.renderGroups()
-            }
-            row = plain
+        let edge = uiEdge()
+        let row = HitRow(frame: NSRect(x: edge, y: y, width: navW - edge * 2, height: rowH))
+        row.wantsLayer = true
+        row.layer?.cornerRadius = 8
+        row.layer?.backgroundColor = (on ? color("accent.soft") : NSColor.clear).cgColor
+        row.onClick = { [weak self] in
+            self?.panelNav = id
+            self?.renderGroups()
         }
-        if let dot {
-            let d = NSView(frame: NSRect(x: 10, y: (rowH - 6) / 2, width: 6, height: 6))
-            d.wantsLayer = true
-            d.layer?.cornerRadius = 3
-            d.layer?.backgroundColor = dot.cgColor
-            row.addSubview(d)
-        }
-        let labelX: CGFloat = dot == nil ? 8 : 24
-        if library, renamingGroupId == id {
-            let fieldW = max(48, row.bounds.width - labelX - (library ? 58 : 44))
-            let field = NSTextField(frame: NSRect(x: labelX, y: (rowH - 24) / 2, width: fieldW, height: 24))
-            field.stringValue = title
-            field.font = UI.font(13, .semibold)
-            field.textColor = color("text.primary")
-            field.identifier = NSUserInterfaceItemIdentifier("rename-\(id)")
-            field.target = self
-            field.action = #selector(commitGroupName(_:))
-            field.cell?.sendsActionOnEndEditing = true
-            field.focusRingType = .none
-            row.addSubview(field)
-        } else {
-            let label = UI.plain(title, 13, on ? .semibold : .regular, on ? color("accent.hover") : color("text.secondary"))
-            label.truncates = true
-            label.frame = NSRect(x: labelX, y: 0, width: row.bounds.width - labelX - 44, height: rowH)
-            row.addSubview(label)
-        }
-        let countX: CGFloat = library ? row.bounds.width - 58 : row.bounds.width - 40
+        let labelX: CGFloat = 8
+        let label = UI.plain(title, 13, on ? .semibold : .regular, on ? color("accent.hover") : color("text.secondary"))
+        label.truncates = true
+        label.frame = NSRect(x: labelX, y: 0, width: row.bounds.width - labelX - 44, height: rowH)
+        row.addSubview(label)
         let c = UI.plain("\(count)", 11, .regular, color("text.tertiary"), .right)
-        c.frame = NSRect(x: countX, y: 0, width: 28, height: rowH)
+        c.frame = NSRect(x: row.bounds.width - 40, y: 0, width: 28, height: rowH)
         row.addSubview(c)
         nav.addSubview(row)
         return y + rowH + 4
@@ -1141,10 +1124,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         let items = group.itemIds.compactMap { id in session.library.items.first { $0.id == id } }
             .filter { panelSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(panelSearch) }
-        let outer: CGFloat = 12
+        let outer = uiEdge()
+        let contentW = panelContentWidth(canvas)
         let cell: CGFloat = 80
         let cellGap: CGFloat = 8
-        let innerW = canvas.bounds.width - outer * 2
+        let innerW = contentW - outer * 2
 
         if items.isEmpty, !panelEdit {
             let totalH: CGFloat = 420
@@ -1152,7 +1136,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             let zoneH: CGFloat = 104
             let blockH: CGFloat = zoneH + 88
             let top = max(outer, (totalH - blockH) / 2)
-            let zone = FlippedView(frame: NSRect(x: (canvas.bounds.width - zoneW) / 2, y: top, width: zoneW, height: zoneH))
+            let zone = FlippedView(frame: NSRect(x: outer + (contentW - outer * 2 - zoneW) / 2, y: top, width: zoneW, height: zoneH))
             panelDashedDropZone(on: zone, cornerRadius: 10)
             let down = UI.plain("↓", 28, .regular, color("text.tertiary"), .center)
             down.frame = NSRect(x: 0, y: 24, width: zoneW, height: 32)
@@ -1200,11 +1184,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
             cellView.addSubview(lbl)
             let shortcut = item
-            cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
+            if panelEdit {
+                cellView.onClick = {}
+            } else {
+                cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
+            }
             if panelEdit { wobble(cellView, index: index) }
             canvas.addSubview(cellView)
             cx += cell + cellGap
-            if cx + cell > canvas.bounds.width - outer {
+            if cx + cell > outer + contentW - outer {
                 cx = outer
                 cy += cell + cellGap
             }
@@ -1233,8 +1221,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             return
         }
         let groups = session.library.groups.filter { $0.id != "fav" }
-        let outer: CGFloat = 12
-        let inner: CGFloat = 16
+        let outer = uiEdge()
+        let inner = uiEdge()
+        let contentW = panelContentWidth(canvas)
         let cardGap: CGFloat = 12
         var y: CGFloat = outer
         for group in groups {
@@ -1243,7 +1232,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             let folded = foldedGroups.contains(group.id)
             let cell: CGFloat = 80
             let cellGap: CGFloat = 8
-            let cardW = canvas.bounds.width - outer * 2
+            let cardW = contentW - outer * 2
             let cols = max(1, Int((cardW - inner * 2 + cellGap) / (cell + cellGap)))
             let rows = Int(ceil(Double(max(items.count + (panelEdit ? 1 : 0), 1)) / Double(cols)))
             let headH: CGFloat = 48
@@ -1334,7 +1323,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                     lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
                     cellView.addSubview(lbl)
                     let shortcut = item
-                    cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
+                    if panelEdit {
+                        cellView.onClick = {}
+                    } else {
+                        cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
+                    }
                     if panelEdit { wobble(cellView, index: index) }
                     card.addSubview(cellView)
                     cx += cell + cellGap
@@ -2174,7 +2167,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     @objc private func hideFromButton() { session.hide() }
     @objc private func showSettingsFromLauncher() { showSettings() }
     @objc private func showToolsFromLauncher() { showTools() }
-    @objc private func closeGroups() { groupsWindow?.orderOut(nil) }
+    @objc private func closeGroups() { dismissGroups() }
+
+    private func dismissGroups() {
+        rememberPanelFrame(groupsWindow)
+        groupsWindow?.orderOut(nil)
+    }
     @objc private func closeSettings() { settingsWindow?.orderOut(nil) }
     @objc private func noop() {}
 
@@ -2202,22 +2200,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let q = session.query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         if let url = URL(string: "https://www.bing.com/search?q=\(q)") { NSWorkspace.shared.open(url) }
         session.hide()
-    }
-
-    @objc private func clipAction(_ sender: NSButton) {
-        let name = sender.identifier?.rawValue ?? ""
-        guard let clip = session.clips.first else { return }
-        if name == "translate" {
-            session.query = "fy \(clip.text)"
-            session.search()
-            rebuildLauncher()
-        } else if name == "clipboard" {
-            showTool("clipboard")
-        } else {
-            session.settings.dismissedClip = clip.id
-            session.save()
-            rebuildLauncher()
-        }
     }
 
     @objc private func chipClipboard() { showTool("clipboard") }
@@ -3397,6 +3379,64 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         return button
     }
 
+    private struct LauncherLayout {
+        let width: CGFloat
+        let pad: CGFloat
+        let rowW: CGFloat
+        let edge: CGFloat
+    }
+
+    private var scrollGutter: CGFloat { 8 }
+
+    private func uiEdge() -> CGFloat { session.store.layout("launcher", "edgeInset") }
+
+    private func panelContentWidth(_ canvas: NSView) -> CGFloat {
+        max(0, canvas.bounds.width - scrollGutter)
+    }
+
+    private func launcherLayout() -> LauncherLayout {
+        let width = session.store.layout("launcher", "width")
+        let edge = uiEdge()
+        let rowW = width - edge * 2
+        return LauncherLayout(width: width, pad: edge, rowW: rowW, edge: edge)
+    }
+
+    private func layoutLauncherChrome() {
+        let layout = launcherLayout()
+        let width = layout.width
+        let edge = layout.edge
+        let inputRow = session.store.layout("launcher", "inputRowHeight")
+        func mid(_ height: CGFloat) -> CGFloat { floor((inputRow - height) / 2) }
+
+        let btn: CGFloat = 28
+        let gap: CGFloat = 8
+        let closeX = width - edge - btn
+        let gearX = closeX - gap - btn
+        let clearX = gearX - gap - btn
+        if let close = launcherRoot.subviews.first(where: { $0.identifier?.rawValue == "chrome-close" }) {
+            close.frame = NSRect(x: closeX, y: mid(btn), width: btn, height: btn)
+        }
+        if let gear = launcherRoot.subviews.first(where: { $0.identifier?.rawValue == "chrome-gear" }) {
+            gear.frame = NSRect(x: gearX, y: mid(btn), width: btn, height: btn)
+        }
+        clearButton.frame = NSRect(x: clearX, y: mid(btn), width: btn, height: btn)
+
+        let fieldY = mid(36)
+        if capsuleSlot.frame.width > 0 {
+            let fieldX = capsuleSlot.frame.maxX + 8
+            field.frame = NSRect(x: fieldX, y: fieldY, width: max(80, clearButton.frame.minX - 8 - fieldX), height: 36)
+        } else {
+            field.frame = NSRect(x: 44, y: fieldY, width: max(80, clearButton.frame.minX - 8 - 44), height: 36)
+        }
+
+        footerBar.frame.size.width = width
+        footerBrand.frame = NSRect(x: width - edge - 84, y: 8, width: 84, height: 16)
+        footerHints.frame = NSRect(x: edge, y: 0, width: max(80, footerBrand.frame.minX - edge - 8), height: 32)
+        if let footHit = footerBar.subviews.first(where: { $0.identifier?.rawValue == "hotkey-foot" }) {
+            footHit.frame = NSRect(x: 0, y: 0, width: footerHints.frame.maxX, height: 32)
+        }
+    }
+
     private func layoutFooter() {
         footerHints.subviews.forEach { $0.removeFromSuperview() }
         let alt = altLabel()
@@ -3497,7 +3537,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         )
         window.title = title
         window.appearance = nil
-        window.isMovableByWindowBackground = true
+        // 若开启，边框less 窗口会与侧栏自定义拖放排序抢手势。
+        window.isMovableByWindowBackground = false
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = true
