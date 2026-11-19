@@ -35,6 +35,8 @@
     "group.deleteTitle": "删除分组",
     "group.deleteConfirm": "删除「{name}」后，组内的 {count} 个快捷项也会一并删除，无法撤销。",
     "group.rename": "重命名",
+    "shortcut.move": "移动到分组",
+    "shortcut.moveEmpty": "没有其他分组",
     "panel.footer": "拖入即可添加 · {hotkey} 唤出 · 共 {count} 项",
     "empty.clipboard": "还没有复制记录，复制任意内容后这里会出现",
     "empty.clipboardAction": "去试试",

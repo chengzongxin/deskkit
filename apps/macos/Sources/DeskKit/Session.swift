@@ -319,6 +319,21 @@ final class Session {
         onChange()
     }
 
+    func moveShortcut(_ itemId: String, from sourceGroupId: String, to targetGroupId: String) {
+        guard sourceGroupId != targetGroupId else { return }
+        guard let source = library.groups.firstIndex(where: { $0.id == sourceGroupId }),
+              let target = library.groups.firstIndex(where: { $0.id == targetGroupId }) else { return }
+        guard library.groups[source].itemIds.contains(itemId) else { return }
+        library.groups[source].itemIds.removeAll { $0 == itemId }
+        if !library.groups[target].itemIds.contains(itemId) {
+            library.groups[target].itemIds.append(itemId)
+        }
+        save()
+        let name = library.items.first { $0.id == itemId }?.title ?? itemId
+        Log.info("已将「\(name)」从「\(library.groups[source].name)」移到「\(library.groups[target].name)」")
+        onChange()
+    }
+
     func renameGroup(_ id: String, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = library.groups.firstIndex(where: { $0.id == id }) else {

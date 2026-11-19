@@ -186,15 +186,6 @@ public sealed class GroupsWindow : Window
         root.Children.Add(body);
 
         var footDock = new DockPanel { Margin = new Thickness(16, 0, 16, 0) };
-        if (edit)
-        {
-            var done = C.Primary("✓ 完成", () => { edit = false; Render(); });
-            done.Margin = new Thickness(8, 0, 0, 0);
-            done.VerticalAlignment = VerticalAlignment.Center;
-            DockPanel.SetDock(done, Dock.Right);
-            footDock.Children.Add(done);
-        }
-
         var tip = C.Label(
             S.Store.Text("panel.footer", new Dictionary<string, string>
             {
@@ -427,6 +418,11 @@ public sealed class GroupsWindow : Window
 
     void NavDragOver(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent("deskkit-shortcut"))
+        {
+            return;
+        }
+
         if (!e.Data.GetDataPresent("deskkit-group"))
         {
             e.Effects = DragDropEffects.None;
@@ -447,6 +443,11 @@ public sealed class GroupsWindow : Window
 
     void NavScrollDragOver(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent("deskkit-shortcut"))
+        {
+            return;
+        }
+
         if (!e.Data.GetDataPresent("deskkit-group"))
         {
             e.Effects = DragDropEffects.None;
@@ -695,12 +696,12 @@ public sealed class GroupsWindow : Window
         stack.Children.Add(PanelHintLabel());
     }
 
-    UIElement ItemGrid(IReadOnlyList<Shortcut> items)
+    UIElement ItemGrid(IReadOnlyList<Shortcut> items, string groupId)
     {
         var wrap = new WrapPanel { Margin = new Thickness(0) };
         foreach (var item in items)
         {
-            wrap.Children.Add(Cell(item));
+            wrap.Children.Add(Cell(item, groupId));
         }
 
         if (edit)
@@ -754,7 +755,7 @@ public sealed class GroupsWindow : Window
             return;
         }
 
-        canvas.Children.Add(ItemGrid(items));
+        canvas.Children.Add(ItemGrid(items, group.Id));
     }
 
     void DrawGroupCard(Panel canvas, Group group)
@@ -808,7 +809,7 @@ public sealed class GroupsWindow : Window
             }
             else
             {
-                var wrap = ItemGrid(items);
+                var wrap = ItemGrid(items, group.Id);
                 if (wrap is FrameworkElement gridBlock)
                 {
                     gridBlock.Margin = new Thickness(0, 12, 0, 0);
@@ -823,7 +824,7 @@ public sealed class GroupsWindow : Window
         canvas.Children.Add(card);
     }
 
-    UIElement Cell(Shortcut item)
+    UIElement Cell(Shortcut item, string sourceGroup)
     {
         var cell = new Grid { Width = 80, Height = 80, Margin = new Thickness(4), Cursor = Cursors.Hand };
         var image = Icons.File(item.Path, 40);
@@ -851,7 +852,8 @@ public sealed class GroupsWindow : Window
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(2, 2, 0, 0),
                 Cursor = Cursors.Hand,
-                Child = C.Label("−", 14, FontWeights.Normal, "text.secondary")
+                Child = C.Label("−", 14, FontWeights.Normal, "text.secondary"),
+                Tag = "cell-delete"
             };
             del.MouseLeftButtonUp += (_, e) =>
             {
@@ -864,9 +866,57 @@ public sealed class GroupsWindow : Window
             cell.Children.Add(del);
         }
 
+        var menu = new ContextMenu();
+        var move = new MenuItem { Header = S.Store.Text("shortcut.move") };
+        foreach (var group in S.Library.Groups.Where(entry => entry.Id != "fav" && entry.Id != sourceGroup))
+        {
+            var dest = group;
+            var choice = new MenuItem { Header = dest.Name };
+            choice.Click += (_, _) => S.MoveShortcut(item.Id, sourceGroup, dest.Id);
+            move.Items.Add(choice);
+        }
+
+        if (move.Items.Count == 0)
+        {
+            move.Items.Add(new MenuItem { Header = S.Store.Text("shortcut.moveEmpty"), IsEnabled = false });
+        }
+
+        menu.Items.Add(move);
+        cell.ContextMenu = menu;
+
+        var pressedAt = DateTime.UtcNow;
+        var dragging = false;
+        cell.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (IsCellDelete(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
+            pressedAt = DateTime.UtcNow;
+            dragging = false;
+        };
+        cell.PreviewMouseMove += (_, e) =>
+        {
+            if (dragging || e.LeftButton != MouseButtonState.Pressed || IsCellDelete(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
+            if ((DateTime.UtcNow - pressedAt).TotalMilliseconds < 380)
+            {
+                return;
+            }
+
+            dragging = true;
+            var data = new System.Windows.DataObject("deskkit-shortcut", item.Id + "\n" + sourceGroup);
+            DragDrop.DoDragDrop(cell, data, DragDropEffects.Move);
+            e.Handled = true;
+        };
+
         cell.MouseLeftButtonUp += (_, e) =>
         {
-            if (edit) return;
+            if (dragging || edit) return;
             try
             {
                 Session.Open(item.Path);
@@ -876,6 +926,41 @@ public sealed class GroupsWindow : Window
             e.Handled = true;
         };
         return cell;
+    }
+
+    static bool IsCellDelete(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (source is FrameworkElement element && element.Tag as string == "cell-delete")
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    static bool ShortcutDrag(DragEventArgs e, out string itemId, out string sourceGroup)
+    {
+        itemId = "";
+        sourceGroup = "";
+        if (e.Data.GetData("deskkit-shortcut") is not string payload)
+        {
+            return false;
+        }
+
+        var parts = payload.Split('\n');
+        if (parts.Length != 2 || parts[0].Length == 0 || parts[1].Length == 0)
+        {
+            return false;
+        }
+
+        itemId = parts[0];
+        sourceGroup = parts[1];
+        return true;
     }
 
     void CommitRename(string id, string name)
@@ -969,6 +1054,24 @@ public sealed class GroupsWindow : Window
 
     void OnDragOver(object sender, DragEventArgs e)
     {
+        if (ShortcutDrag(e, out _, out var from))
+        {
+            var hover = GroupUnder(e);
+            var canMove = hover != null && hover != from;
+            e.Effects = canMove ? DragDropEffects.Move : DragDropEffects.None;
+            e.Handled = true;
+            if (canMove)
+            {
+                ShowDropHint(hover!, moving: true);
+            }
+            else
+            {
+                HideDropHint();
+            }
+
+            return;
+        }
+
         var allowed = CanDrop(e);
         e.Effects = allowed ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
@@ -984,6 +1087,19 @@ public sealed class GroupsWindow : Window
 
     void OnDrop(object sender, DragEventArgs e)
     {
+        if (ShortcutDrag(e, out var movingId, out var from))
+        {
+            var hover = GroupUnder(e);
+            HideDropHint();
+            if (hover != null && hover != from)
+            {
+                S.MoveShortcut(movingId, from, hover);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         var groupId = DropTarget(GroupUnder(e));
         var added = 0;
         var total = 0;
@@ -1181,9 +1297,17 @@ public sealed class GroupsWindow : Window
         var hit = VisualTreeHelper.HitTest(this, e.GetPosition(this))?.VisualHit as DependencyObject;
         while (hit != null)
         {
-            if (hit is FrameworkElement element && element.Tag is string tag && S.Library.Groups.Any(group => group.Id == tag))
+            if (hit is FrameworkElement element)
             {
-                return tag;
+                if (element.Tag is string tag && S.Library.Groups.Any(group => group.Id == tag))
+                {
+                    return tag;
+                }
+
+                if (S.Library.Groups.Any(group => group.Id == element.Name))
+                {
+                    return element.Name;
+                }
             }
 
             hit = VisualTreeHelper.GetParent(hit);
@@ -1212,7 +1336,7 @@ public sealed class GroupsWindow : Window
         return S.Library.Groups.FirstOrDefault()?.Id ?? "ungrouped";
     }
 
-    void ShowDropHint(string groupId)
+    void ShowDropHint(string groupId, bool moving = false)
     {
         if (dropVeil == null || dropTitle == null)
         {
@@ -1220,7 +1344,7 @@ public sealed class GroupsWindow : Window
         }
 
         var name = S.Library.Groups.FirstOrDefault(group => group.Id == groupId)?.Name ?? "未分组";
-        dropTitle.Text = $"松手添加到「{name}」";
+        dropTitle.Text = moving ? $"松手移动到「{name}」" : $"松手添加到「{name}」";
         dropVeil.Visibility = Visibility.Visible;
         HighlightGroup(groupId);
     }

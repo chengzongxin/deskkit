@@ -420,6 +420,32 @@ public sealed class Session
         OnChange();
     }
 
+    public void MoveShortcut(string itemId, string sourceGroupId, string targetGroupId)
+    {
+        if (sourceGroupId == targetGroupId)
+        {
+            return;
+        }
+
+        var source = Library.Groups.FindIndex(group => group.Id == sourceGroupId);
+        var target = Library.Groups.FindIndex(group => group.Id == targetGroupId);
+        if (source < 0 || target < 0 || !Library.Groups[source].ItemIds.Contains(itemId))
+        {
+            return;
+        }
+
+        Library.Groups[source].ItemIds.RemoveAll(id => id == itemId);
+        if (!Library.Groups[target].ItemIds.Contains(itemId))
+        {
+            Library.Groups[target].ItemIds.Add(itemId);
+        }
+
+        Save();
+        var name = Library.Items.FirstOrDefault(item => item.Id == itemId)?.Title ?? itemId;
+        Log.Info($"已将「{name}」从「{Library.Groups[source].Name}」移到「{Library.Groups[target].Name}」");
+        OnChange();
+    }
+
     public void RenameGroup(string id, string name)
     {
         var trimmed = name.Trim();

@@ -5,6 +5,17 @@ import ServiceManagement
 import UniformTypeIdentifiers
 
 /// 按原型 A/B/C/E/F 还原的 AppKit 壳层。尺寸与色值全部来自 contracts。
+final class ShortcutMove: NSObject {
+    let itemId: String
+    let from: String
+    let to: String
+    init(itemId: String, from: String, to: String) {
+        self.itemId = itemId
+        self.from = from
+        self.to = to
+    }
+}
+
 final class MenuChoice: NSObject {
     let value: String
     let run: () -> Void
@@ -925,9 +936,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
         let rowH: CGFloat = 36
         let rowGap: CGFloat = 4
+        let buttonH: CGFloat = 34
+        let addY = nav.bounds.height - edge - buttonH
         let groups = session.library.groups.filter { $0.id != "fav" }
-        let listH = groups.isEmpty ? 0 : CGFloat(groups.count) * (rowH + rowGap) - rowGap
-        let list = GroupNavListView(frame: NSRect(x: 0, y: ny, width: navW, height: listH))
+        let naturalH = groups.isEmpty ? 0 : CGFloat(groups.count) * (rowH + rowGap) - rowGap
+        let listLimit = max(0, addY - 8 - ny)
+        let list = GroupNavListView(frame: NSRect(x: 0, y: 0, width: navW, height: naturalH))
         list.onReorder = { [weak self] source, target, after in
             self?.session.reorderGroup(source, relativeTo: target, placeAfter: after)
             self?.renderGroups()
@@ -959,12 +973,18 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             list.addRow(groupRow)
             ly += rowH + rowGap
         }
-        nav.addSubview(list)
-        ny += listH
+        let listScroll = NSScrollView(frame: NSRect(x: 0, y: ny, width: navW, height: min(naturalH, listLimit)))
+        listScroll.drawsBackground = false
+        listScroll.hasVerticalScroller = naturalH > listLimit
+        listScroll.autohidesScrollers = true
+        listScroll.scrollerStyle = .overlay
+        listScroll.borderType = .noBorder
+        listScroll.documentView = list
+        nav.addSubview(listScroll)
 
         let add = softButton("新建分组", #selector(addGroup))
-        add.frame = NSRect(x: edge, y: edge, width: navW - edge * 2, height: 34)
-        add.autoresizingMask = [.width, .maxYMargin]
+        add.frame = NSRect(x: edge, y: addY, width: navW - edge * 2, height: buttonH)
+        add.autoresizingMask = [.width, .minYMargin]
         nav.addSubview(add)
         nav.autoresizingMask = [.height]
         nav.onDragEnd = { [weak self, weak window] in self?.rememberPanelFrame(window) }
@@ -992,14 +1012,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let footerText = session.store.text("panel.footer", ["hotkey": chord, "count": "\(total)"])
         let tip = UI.plain(footerText, 12, .regular, color("text.tertiary"))
         tip.truncates = true
-        var tipW = size.width - navW - edge * 2
-        if panelEdit {
-            let done = primaryButton("✓ 完成", #selector(togglePanelEdit))
-            done.frame = NSRect(x: size.width - edge - 96, y: (footerH - controlH) / 2, width: 96, height: controlH)
-            done.autoresizingMask = [.minXMargin]
-            foot.addSubview(done)
-            tipW = done.frame.minX - CGFloat(navW) - edge - gap
-        }
+        let tipW = size.width - navW - edge * 2
         tip.frame = NSRect(x: navW + edge, y: 0, width: max(80, tipW), height: footerH)
         tip.autoresizingMask = [.width]
         foot.addSubview(tip)
@@ -1077,6 +1090,103 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             menu.addItem(del)
         }
         NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
+
+    private func bindShortcutCell(_ cell: HitRow, item: Shortcut, sourceGroup: String) {
+        if panelEdit {
+            cell.onClick = {}
+        } else {
+            cell.onClick = { [weak self] in self?.openShortcut(item) }
+        }
+        cell.onRightClick = { [weak self] event in
+            self?.showShortcutMoveMenu(itemId: item.id, sourceGroup: sourceGroup, event: event, view: cell)
+        }
+        cell.onLongPress = { [weak self] event in
+            self?.trackShortcutMove(itemId: item.id, sourceGroup: sourceGroup, cell: cell, event: event)
+        }
+    }
+
+    private func showShortcutMoveMenu(itemId: String, sourceGroup: String, event: NSEvent, view: NSView) {
+        let menu = NSMenu()
+        let move = NSMenuItem(title: session.store.text("shortcut.move"), action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        let destinations = session.library.groups.filter { $0.id != "fav" && $0.id != sourceGroup }
+        if destinations.isEmpty {
+            let empty = NSMenuItem(title: session.store.text("shortcut.moveEmpty"), action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            submenu.addItem(empty)
+        } else {
+            for group in destinations {
+                let choice = NSMenuItem(title: group.name, action: #selector(menuMoveShortcut(_:)), keyEquivalent: "")
+                choice.target = self
+                choice.representedObject = ShortcutMove(itemId: itemId, from: sourceGroup, to: group.id)
+                submenu.addItem(choice)
+            }
+        }
+        move.submenu = submenu
+        menu.addItem(move)
+        NSMenu.popUpContextMenu(menu, with: event, for: view)
+    }
+
+    @objc private func menuMoveShortcut(_ sender: NSMenuItem) {
+        guard let move = sender.representedObject as? ShortcutMove else { return }
+        session.moveShortcut(move.itemId, from: move.from, to: move.to)
+        renderGroups()
+    }
+
+    private weak var shortcutHover: NSView?
+
+    private func trackShortcutMove(itemId: String, sourceGroup: String, cell: NSView, event: NSEvent) {
+        guard let window = cell.window else { return }
+        cell.alphaValue = 0.45
+        var target: String?
+        while true {
+            guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
+            if next.type == .leftMouseUp { break }
+            let hover = shortcutGroup(at: next.locationInWindow)
+            target = hover == sourceGroup ? nil : hover
+            showShortcutHover(target)
+        }
+        cell.alphaValue = 1
+        showShortcutHover(nil)
+        guard let target else { return }
+        session.moveShortcut(itemId, from: sourceGroup, to: target)
+        renderGroups()
+    }
+
+    private func shortcutGroup(at windowPoint: NSPoint) -> String? {
+        guard let root = groupsWindow?.contentView else { return nil }
+        var view = root.hitTest(windowPoint)
+        while let current = view {
+            if let row = current as? NavGroupRow, !row.groupId.isEmpty {
+                return row.groupId
+            }
+            if let raw = current.identifier?.rawValue, raw.hasPrefix("group-") {
+                return String(raw.dropFirst("group-".count))
+            }
+            view = current.superview
+        }
+        return nil
+    }
+
+    private func showShortcutHover(_ id: String?) {
+        shortcutHover?.layer?.borderWidth = 0
+        shortcutHover?.layer?.borderColor = color("border.default").cgColor
+        shortcutHover = nil
+        guard let id, let root = groupsWindow?.contentView else { return }
+        let view: NSView? = findNavRow(id, in: root) ?? root.find(id: "group-\(id)")
+        view?.wantsLayer = true
+        view?.layer?.borderWidth = 2
+        view?.layer?.borderColor = color("accent").cgColor
+        shortcutHover = view
+    }
+
+    private func findNavRow(_ id: String, in view: NSView) -> NavGroupRow? {
+        if let row = view as? NavGroupRow, row.groupId == id { return row }
+        for child in view.subviews {
+            if let found = findNavRow(id, in: child) { return found }
+        }
+        return nil
     }
 
     @objc private func menuRenameGroup(_ sender: NSMenuItem) {
@@ -1183,12 +1293,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             lbl.truncates = true
             lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
             cellView.addSubview(lbl)
-            let shortcut = item
-            if panelEdit {
-                cellView.onClick = {}
-            } else {
-                cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
-            }
+            bindShortcutCell(cellView, item: item, sourceGroup: group.id)
             if panelEdit { wobble(cellView, index: index) }
             canvas.addSubview(cellView)
             cx += cell + cellGap
@@ -1322,12 +1427,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                     lbl.truncates = true
                     lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
                     cellView.addSubview(lbl)
-                    let shortcut = item
-                    if panelEdit {
-                        cellView.onClick = {}
-                    } else {
-                        cellView.onClick = { [weak self] in self?.openShortcut(shortcut) }
-                    }
+                    bindShortcutCell(cellView, item: item, sourceGroup: group.id)
                     if panelEdit { wobble(cellView, index: index) }
                     card.addSubview(cellView)
                     cx += cell + cellGap

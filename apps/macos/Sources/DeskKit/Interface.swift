@@ -394,7 +394,9 @@ final class KeycapControl: NSControl {
 class HitRow: NSView {
     var onClick: () -> Void = {}
     var onRightClick: ((NSEvent) -> Void)?
+    var onLongPress: ((NSEvent) -> Void)?
     var swallowsClicks = false
+    private var suppressClick = false
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
@@ -405,7 +407,30 @@ class HitRow: NSView {
         }
         return self
     }
-    override func mouseUp(with event: NSEvent) { onClick() }
+    override func mouseDown(with event: NSEvent) {
+        guard let onLongPress, let window else { return }
+        let deadline = Date().addingTimeInterval(0.4)
+        while Date() < deadline {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { break }
+            guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp], until: Date().addingTimeInterval(remaining), inMode: .eventTracking, dequeue: true) else {
+                break
+            }
+            if next.type == .leftMouseUp {
+                onClick()
+                return
+            }
+        }
+        suppressClick = true
+        onLongPress(event)
+    }
+    override func mouseUp(with event: NSEvent) {
+        if suppressClick {
+            suppressClick = false
+            return
+        }
+        onClick()
+    }
     override func rightMouseDown(with event: NSEvent) { onRightClick?(event) }
 }
 
