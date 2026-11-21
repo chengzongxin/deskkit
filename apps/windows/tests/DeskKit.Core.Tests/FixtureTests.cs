@@ -109,6 +109,34 @@ public class FixtureTests
         Assert.Contains("rgb(59,108,246)", ColorConvert.Describe("#3B6CF6"), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void StarterSkipsMissingAndEmptyGroups()
+    {
+        var catalog = store.Starter();
+        Assert.Equal(new[] { "#3B6CF6", "#18A058", "#F0A020" }, catalog.Groups.Select(group => group.Color).ToArray());
+        Assert.Equal("#98A1B0", catalog.Ungrouped.Color);
+        Assert.Equal("未分组", catalog.Ungrouped.Name);
+
+        var found = new[]
+        {
+            new StarterFound("files", "文件资源管理器", @"C:\Windows\explorer.exe", "system"),
+            new StarterFound("notepad", "记事本", @"C:\Windows\System32\notepad.exe", "tools"),
+            new StarterFound("snip", "截图工具", @"C:\Users\me\截图工具.lnk", "tools"),
+            new StarterFound("gone", "不存在", "  ", "tools")
+        };
+        var built = StarterPack.Compose(catalog.Groups, found, catalog.Ungrouped);
+        Assert.Equal(new[] { "system", "tools", "ungrouped" }, built.Groups.Select(group => group.Id).ToArray());
+        Assert.Equal(new[] { "files" }, built.Groups[0].ItemIds);
+        Assert.Equal(new[] { "notepad", "snip" }, built.Groups[1].ItemIds);
+        Assert.Empty(built.Groups[2].ItemIds);
+        Assert.Equal(new[] { "app", "app", "app" }, built.Items.Select(item => item.Kind).ToArray());
+        Assert.Equal("截图工具", built.Items[2].Title);
+
+        var empty = StarterPack.Compose(catalog.Groups, Array.Empty<StarterFound>(), catalog.Ungrouped);
+        Assert.Equal(new[] { "ungrouped" }, empty.Groups.Select(group => group.Id).ToArray());
+        Assert.Empty(empty.Items);
+    }
+
     static string?[] Strings(JsonElement root, string name) =>
         root.GetProperty(name).EnumerateArray().Select(item => item.GetString()).ToArray();
 

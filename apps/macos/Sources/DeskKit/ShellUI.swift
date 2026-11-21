@@ -2066,6 +2066,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 ("失焦自动隐藏", "点击浮层外 150ms 后隐藏", makeSwitch(session.settings.blurHide, #selector(toggleBlur(_:)))),
                 ("多屏行为", "浮层靠近屏幕边缘自动内收，不跨屏裁切", menuButton(multiScreenTitle(), #selector(pickMultiScreen(_:))))
             ])
+            y = settingsCard(doc, y, cardW, "快捷启动", [
+                ("系统工具", "把这台电脑上已有的系统工具和自带应用按分组加进去。已经有的不会重复添加", menuButton("放入", #selector(importStarter(_:))))
+            ])
             y = settingsCard(doc, y, cardW, "外观", [
                 ("主题", "浅色为默认。深色和跟随系统会立刻切换外观", choiceChips([("light", "浅色"), ("dark", "深色"), ("system", "跟随系统")], session.settings.theme, #selector(pickTheme(_:)))),
                 ("强调色", "选中结果和主按钮使用这个颜色", choiceChips([("accent", "蓝"), ("success", "绿"), ("warning", "黄"), ("danger", "红")], session.settings.accentToken, #selector(pickAccent(_:)))),
@@ -3080,6 +3083,18 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let alert = NSAlert()
         alert.messageText = "检查更新"
         alert.informativeText = message
+        alert.addButton(withTitle: "好")
+        alert.runModal()
+    }
+
+    @objc private func importStarter(_ sender: NSButton) {
+        let added = session.importStarterTools()
+        if groupsWindow?.isVisible == true { renderGroups() }
+        let alert = NSAlert()
+        alert.messageText = added == 0 ? "已经在快捷启动里" : "已放入快捷启动"
+        alert.informativeText = added == 0
+            ? "这台电脑上的系统工具都已经在快捷启动里，没有重复添加。"
+            : "新放入 \(added) 个系统工具，并按系统、工具、上网分好组。"
         alert.addButton(withTitle: "好")
         alert.runModal()
     }

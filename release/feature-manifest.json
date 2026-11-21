@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.9.0-win",
+  "version": "0.9.1-win",
   "core": [
     { "id": "contracts", "windows": "shipped", "macos": "deferred" },
     { "id": "summon-hotkey", "windows": "shipped", "macos": "deferred" },

@@ -62,6 +62,7 @@ public sealed class Settings
     public bool CloudSync { get; set; }
     public bool AutoUpdate { get; set; } = true;
     public bool GuideDone { get; set; }
+    public bool StarterSeeded { get; set; }
     public List<string> HiddenTools { get; set; } = [];
     public List<string> ToolOrder { get; set; } = [];
     public int SummonKeyCode { get; set; } = 49;

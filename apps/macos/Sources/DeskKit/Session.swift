@@ -55,6 +55,7 @@ struct Settings: Codable {
     var cloudSync = false
     var autoUpdate = true
     var guideDone = false
+    var starterSeeded = false
     var hiddenTools: [String] = []
     var toolOrder: [String] = []
     var summonKeyCode = 49
@@ -75,7 +76,7 @@ struct Settings: Codable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, autoLaunch, summonMode, blurHide, multiScreen, theme, density, accentToken
         case backgroundImagePath, backgroundOpacity
-        case clipboardRetention, clipboardPaused, cloudSync, autoUpdate, guideDone, hiddenTools, toolOrder
+        case clipboardRetention, clipboardPaused, cloudSync, autoUpdate, guideDone, starterSeeded, hiddenTools, toolOrder
         case summonKeyCode, summonAlt, summonCommand, summonControl, summonShift, lastScreen, dismissedClip
         case panelPlacedByUser, panelX, panelY, panelWidth, panelHeight
         case hotkeys, triggerWords
@@ -100,6 +101,7 @@ struct Settings: Codable {
         cloudSync = try c.decodeIfPresent(Bool.self, forKey: .cloudSync) ?? false
         autoUpdate = try c.decodeIfPresent(Bool.self, forKey: .autoUpdate) ?? true
         guideDone = try c.decodeIfPresent(Bool.self, forKey: .guideDone) ?? false
+        starterSeeded = try c.decodeIfPresent(Bool.self, forKey: .starterSeeded) ?? false
         hiddenTools = try c.decodeIfPresent([String].self, forKey: .hiddenTools) ?? []
         toolOrder = try c.decodeIfPresent([String].self, forKey: .toolOrder) ?? []
         summonKeyCode = try c.decodeIfPresent(Int.self, forKey: .summonKeyCode) ?? 49
@@ -151,6 +153,64 @@ final class Session {
         clips = read([Clip].self, name: "clipboard.json") ?? []
         recents = read([String].self, name: "recents.json") ?? []
         if purgeReservedNavGroup() { write(library, name: "groups.json") }
+        seedStarterIfNeeded()
+    }
+
+    private func seedStarterIfNeeded() {
+        guard !settings.starterSeeded else { return }
+        if library.items.isEmpty {
+            let added = applyStarter(merge: false)
+            Log.info("初始快捷启动已放入 \(added) 项")
+        }
+        settings.starterSeeded = true
+        save()
+    }
+
+    @discardableResult
+    func importStarterTools() -> Int {
+        let added = applyStarter(merge: true)
+        settings.starterSeeded = true
+        save()
+        onChange()
+        Log.info(added == 0 ? "系统工具都已经在快捷启动里" : "已放入 \(added) 个系统工具")
+        return added
+    }
+
+    private func applyStarter(merge: Bool) -> Int {
+        let catalog = store.starter()
+        let hits = StarterLocator.find(catalog.items)
+        let built = StarterPack.compose(groups: catalog.groups, found: hits, ungrouped: catalog.ungrouped)
+        if !merge {
+            library.schemaVersion = 1
+            library.groups = built.groups.map { Group(id: $0.id, name: $0.name, color: $0.color, itemIds: $0.itemIds) }
+            library.items = built.items.map { Shortcut(id: $0.id, title: $0.title, path: $0.path, kind: $0.kind) }
+            return library.items.count
+        }
+
+        for group in built.groups where group.id != catalog.ungrouped.id && !library.groups.contains(where: { $0.id == group.id }) {
+            let created = Group(id: group.id, name: group.name, color: group.color, itemIds: [])
+            if let ungrouped = library.groups.firstIndex(where: { $0.id == catalog.ungrouped.id }) {
+                library.groups.insert(created, at: ungrouped)
+            } else {
+                library.groups.append(created)
+            }
+        }
+
+        var known = Set(library.items.map { $0.path.lowercased() })
+        var added = 0
+        for item in built.items {
+            let key = item.path.lowercased()
+            if known.contains(key) { continue }
+            guard let group = built.groups.first(where: { $0.itemIds.contains(item.id) }) else { continue }
+            let id = library.items.contains(where: { $0.id == item.id }) ? UUID().uuidString : item.id
+            library.items.append(Shortcut(id: id, title: item.title, path: item.path, kind: item.kind))
+            if let index = library.groups.firstIndex(where: { $0.id == group.id }) {
+                library.groups[index].itemIds.append(id)
+            }
+            known.insert(key)
+            added += 1
+        }
+        return added
     }
 
     @discardableResult

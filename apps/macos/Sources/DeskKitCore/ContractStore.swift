@@ -185,6 +185,28 @@ public final class ContractStore {
         files["schema/settings.json"]?["x-defaults"]?.object ?? [:]
     }
 
+    public func starter() -> StarterCatalog {
+        let root = files["starter-pack.json"]
+        let groups = (root?["groups"]?.values ?? []).map { Self.groupSpec($0) }
+        let items = (root?["items"]?.values ?? []).map { item in
+            StarterEntry(
+                id: item["id"]?.string ?? "",
+                group: item["group"]?.string ?? "",
+                windows: Self.side(item["windows"]),
+                macos: Self.side(item["macos"])
+            )
+        }
+        return StarterCatalog(ungrouped: Self.groupSpec(root?["ungrouped"]), groups: groups, items: items)
+    }
+
+    private static func groupSpec(_ node: JSON?) -> StarterGroupSpec {
+        StarterGroupSpec(id: node?["id"]?.string ?? "", name: node?["name"]?.string ?? "", color: node?["color"]?.string ?? "")
+    }
+
+    private static func side(_ node: JSON?) -> StarterSide {
+        StarterSide(title: node?["title"]?.string ?? "", paths: node?["paths"]?.strings() ?? [], names: node?["names"]?.strings() ?? [])
+    }
+
     public func fixture(_ name: String) throws -> JSON {
         try JSON.load(url: root.appendingPathComponent("fixtures/\(name)"))
     }
@@ -200,7 +222,8 @@ public final class ContractStore {
     private static let required = [
         "contract-version.json", "tokens.json", "layout.json", "ui-state.json", "triggers.json",
         "keymap.json", "i18n.json", "permissions.json", "platform-diffs.json",
-        "schema/index-item.json", "schema/groups.json", "schema/clipboard.json", "schema/settings.json"
+        "schema/index-item.json", "schema/groups.json", "schema/clipboard.json", "schema/settings.json",
+        "starter-pack.json"
     ]
 
     public static func hashTree(_ root: URL) throws -> String {

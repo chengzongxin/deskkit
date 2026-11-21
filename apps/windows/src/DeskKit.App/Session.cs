@@ -68,6 +68,117 @@ public sealed class Session
         {
             JsonStore.Write(Library, "groups.json");
         }
+
+        SeedStarterIfNeeded();
+    }
+
+    void SeedStarterIfNeeded()
+    {
+        if (Settings.StarterSeeded)
+        {
+            return;
+        }
+
+        if (Library.Items.Count == 0)
+        {
+            var added = ApplyStarter(merge: false);
+            Log.Info($"初始快捷启动已放入 {added} 项");
+        }
+
+        Settings.StarterSeeded = true;
+        Save();
+    }
+
+    public int ImportStarterTools()
+    {
+        var added = ApplyStarter(merge: true);
+        Settings.StarterSeeded = true;
+        Save();
+        OnChange();
+        Log.Info(added == 0 ? "系统工具都已经在快捷启动里" : $"已放入 {added} 个系统工具");
+        return added;
+    }
+
+    int ApplyStarter(bool merge)
+    {
+        var catalog = Store.Starter();
+        var hits = StarterLocator.Find(catalog.Items.Select(item => new StarterLocator.Query(
+            item.Id,
+            item.Group,
+            item.Windows.Title,
+            item.Windows.Paths,
+            item.Windows.Names)).ToArray());
+        var built = StarterPack.Compose(
+            catalog.Groups,
+            hits.Select(hit => new StarterFound(hit.Id, hit.Title, hit.Path, hit.GroupId)).ToArray(),
+            catalog.Ungrouped);
+        if (!merge)
+        {
+            Library.SchemaVersion = 1;
+            Library.Groups = built.Groups.Select(group => new Group
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Color = group.Color,
+                ItemIds = group.ItemIds.ToList()
+            }).ToList();
+            Library.Items = built.Items.Select(item => new Shortcut
+            {
+                Id = item.Id,
+                Title = item.Title,
+                Path = item.Path,
+                Kind = item.Kind
+            }).ToList();
+            return Library.Items.Count;
+        }
+
+        foreach (var group in built.Groups)
+        {
+            if (group.Id == catalog.Ungrouped.Id || Library.Groups.Any(existing => existing.Id == group.Id))
+            {
+                continue;
+            }
+
+            var ungrouped = Library.Groups.FindIndex(existing => existing.Id == catalog.Ungrouped.Id);
+            var created = new Group { Id = group.Id, Name = group.Name, Color = group.Color, ItemIds = [] };
+            if (ungrouped >= 0)
+            {
+                Library.Groups.Insert(ungrouped, created);
+            }
+            else
+            {
+                Library.Groups.Add(created);
+            }
+        }
+
+        var known = new HashSet<string>(Library.Items.Select(item => item.Path), StringComparer.OrdinalIgnoreCase);
+        var added = 0;
+        foreach (var item in built.Items)
+        {
+            if (known.Contains(item.Path))
+            {
+                continue;
+            }
+
+            var group = built.Groups.FirstOrDefault(candidate => candidate.ItemIds.Contains(item.Id));
+            if (group == null)
+            {
+                continue;
+            }
+
+            var id = Library.Items.Any(existing => existing.Id == item.Id) ? Guid.NewGuid().ToString() : item.Id;
+            Library.Items.Add(new Shortcut { Id = id, Title = item.Title, Path = item.Path, Kind = item.Kind });
+            var index = Library.Groups.FindIndex(existing => existing.Id == group.Id);
+            if (index >= 0)
+            {
+                Library.Groups[index].ItemIds.Add(id);
+            }
+
+            known.Add(item.Path);
+            added++;
+        }
+
+        return added;
     }
 
     public void Save()

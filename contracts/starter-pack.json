@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "ungrouped": { "id": "ungrouped", "name": "未分组", "color": "#98A1B0" },
+  "groups": [
+    { "id": "system", "name": "系统", "color": "#3B6CF6" },
+    { "id": "tools", "name": "工具", "color": "#18A058" },
+    { "id": "web", "name": "上网", "color": "#F0A020" }
+  ],
+  "items": [
+    {
+      "id": "files",
+      "group": "system",
+      "windows": { "title": "文件资源管理器", "paths": ["%SystemRoot%\\explorer.exe"], "names": ["文件资源管理器", "File Explorer"] },
+      "macos": { "title": "Finder", "paths": ["/System/Library/CoreServices/Finder.app"], "names": [] }
+    },
+    {
+      "id": "settings",
+      "group": "system",
+      "windows": { "title": "设置", "paths": ["%SystemRoot%\\ImmersiveControlPanel\\SystemSettings.exe"], "names": ["设置", "Settings"] },
+      "macos": { "title": "系统设置", "paths": ["/System/Applications/System Settings.app", "/System/Applications/System Preferences.app"], "names": [] }
+    },
+    {
+      "id": "taskmgr",
+      "group": "system",
+      "windows": { "title": "任务管理器", "paths": ["%SystemRoot%\\System32\\taskmgr.exe"], "names": ["任务管理器", "Task Manager"] },
+      "macos": { "title": "", "paths": [], "names": [] }
+    },
+    {
+      "id": "control",
+      "group": "system",
+      "windows": { "title": "控制面板", "paths": ["%SystemRoot%\\System32\\control.exe"], "names": ["控制面板", "Control Panel"] },
+      "macos": { "title": "", "paths": [], "names": [] }
+    },
+    {
+      "id": "notepad",
+      "group": "tools",
+      "windows": { "title": "记事本", "paths": ["%SystemRoot%\\System32\\notepad.exe", "%SystemRoot%\\notepad.exe"], "names": ["记事本", "Notepad"] },
+      "macos": { "title": "文本编辑", "paths": ["/System/Applications/TextEdit.app"], "names": [] }
+    },
+    {
+      "id": "calc",
+      "group": "tools",
+      "windows": { "title": "计算器", "paths": ["%SystemRoot%\\System32\\calc.exe"], "names": ["计算器", "Calculator"] },
+      "macos": { "title": "计算器", "paths": ["/System/Applications/Calculator.app"], "names": [] }
+    },
+    {
+      "id": "paint",
+      "group": "tools",
+      "windows": { "title": "画图", "paths": ["%SystemRoot%\\System32\\mspaint.exe"], "names": ["画图", "Paint"] },
+      "macos": { "title": "预览", "paths": ["/System/Applications/Preview.app"], "names": [] }
+    },
+    {
+      "id": "snip",
+      "group": "tools",
+      "windows": { "title": "截图工具", "paths": ["%SystemRoot%\\System32\\SnippingTool.exe"], "names": ["截图工具", "Snipping Tool", "截图和草图"] },
+      "macos": { "title": "截图", "paths": ["/System/Applications/Utilities/Screenshot.app"], "names": [] }
+    },
+    {
+      "id": "terminal",
+      "group": "tools",
+      "windows": {
+        "title": "终端",
+        "paths": ["%LocalAppData%\\Microsoft\\WindowsApps\\wt.exe", "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"],
+        "names": ["终端", "Windows Terminal"]
+      },
+      "macos": { "title": "终端", "paths": ["/System/Applications/Utilities/Terminal.app"], "names": [] }
+    },
+    {
+      "id": "browser",
+      "group": "web",
+      "windows": {
+        "title": "Microsoft Edge",
+        "paths": ["%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe", "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe"],
+        "names": ["Microsoft Edge"]
+      },
+      "macos": { "title": "Safari", "paths": ["/Applications/Safari.app", "/System/Applications/Safari.app"], "names": [] }
+    },
+    {
+      "id": "store",
+      "group": "web",
+      "windows": { "title": "Microsoft Store", "paths": ["%LocalAppData%\\Microsoft\\WindowsApps\\microsoftstore.exe", "%LocalAppData%\\Microsoft\\WindowsApps\\store.exe"], "names": ["Microsoft Store", "微软商店"] },
+      "macos": { "title": "App Store", "paths": ["/System/Applications/App Store.app"], "names": [] }
+    }
+  ]
+}

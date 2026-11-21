@@ -105,6 +105,10 @@ public sealed class SettingsWindow : Window
             ("失焦自动隐藏", "点击浮层外 150ms 后隐藏", C.Switch(S.Settings.BlurHide, on => SavePick(() => S.Settings.BlurHide = on, "失焦自动隐藏"))),
             ("多屏行为", "浮层靠近屏幕边缘自动内收，不跨屏裁切", C.Menu([("followCursor", "跟随鼠标所在屏"), ("last", "记住上次呼出屏"), ("main", "固定主屏")], S.Settings.MultiScreen, value => SavePick(() => S.Settings.MultiScreen = value, "多屏行为")))
         ]));
+        page.Children.Add(C.Card("快捷启动",
+        [
+            ("系统工具", "把这台电脑上已有的系统工具和自带应用按分组加进去。已经有的不会重复添加", C.Soft("放入", ImportStarter))
+        ]));
         page.Children.Add(C.Card("外观",
         [
             ("主题", "浅色为默认。深色和跟随系统会立刻切换外观", C.Chips([("light", "浅色"), ("dark", "深色"), ("system", "跟随系统")], S.Settings.Theme, value => { S.Settings.Theme = value; S.Save(); shell.RefreshSurfaces(); })),
@@ -321,6 +325,26 @@ public sealed class SettingsWindow : Window
 
         Log.Info($"已导出数据到 {destination}");
         Session.Open(destination);
+    }
+
+    void ImportStarter()
+    {
+        int added;
+        try
+        {
+            added = S.ImportStarterTools();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"放入系统工具失败 {ex.Message}");
+            System.Windows.MessageBox.Show("没能放进去。开始菜单有个目录读不到，这次没有写入。", "快捷启动");
+            return;
+        }
+
+        var message = added == 0
+            ? "这台电脑上的系统工具都已经在快捷启动里，没有重复添加。"
+            : $"新放入 {added} 个系统工具，并按系统、工具、上网分好组。";
+        System.Windows.MessageBox.Show(message, "快捷启动");
     }
 
     void CheckUpdate()

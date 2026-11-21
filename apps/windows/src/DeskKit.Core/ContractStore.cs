@@ -42,7 +42,8 @@ public sealed class ContractStore
     [
         "contract-version.json", "tokens.json", "layout.json", "ui-state.json", "triggers.json",
         "keymap.json", "i18n.json", "permissions.json", "platform-diffs.json",
-        "schema/index-item.json", "schema/groups.json", "schema/clipboard.json", "schema/settings.json"
+        "schema/index-item.json", "schema/groups.json", "schema/clipboard.json", "schema/settings.json",
+        "starter-pack.json"
     ];
 
     readonly Dictionary<string, JsonElement> files = new(StringComparer.Ordinal);
@@ -238,6 +239,36 @@ public sealed class ContractStore
 
         return null;
     }
+
+    public StarterCatalog Starter()
+    {
+        var root = files["starter-pack.json"];
+        return new StarterCatalog(
+            GroupSpec(root.GetProperty("ungrouped")),
+            root.GetProperty("groups").EnumerateArray().Select(GroupSpec).ToArray(),
+            root.GetProperty("items").EnumerateArray().Select(item => new StarterEntry(
+                Str(item, "id"),
+                Str(item, "group"),
+                Side(item, "windows"),
+                Side(item, "macos"))).ToArray());
+    }
+
+    static StarterGroupSpec GroupSpec(JsonElement item) => new(Str(item, "id"), Str(item, "name"), Str(item, "color"));
+
+    static StarterSide Side(JsonElement item, string name)
+    {
+        if (!item.TryGetProperty(name, out var side) || side.ValueKind != JsonValueKind.Object)
+        {
+            return new StarterSide("", Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        return new StarterSide(Str(side, "title"), Strings(side, "paths"), Strings(side, "names"));
+    }
+
+    static string[] Strings(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().Select(part => part.GetString() ?? "").ToArray()
+            : Array.Empty<string>();
 
     public IReadOnlyList<PermissionDef> Permissions(string platform)
     {
