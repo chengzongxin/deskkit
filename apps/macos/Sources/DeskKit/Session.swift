@@ -172,13 +172,15 @@ final class Session {
         settings.starterSeeded = true
         save()
         onChange()
-        Log.info(added == 0 ? "系统工具都已经在快捷启动里" : "已放入 \(added) 个系统工具")
+        Log.info(added == 0 ? "系统工具和已安装应用都已经在快捷启动里" : "已放入 \(added) 个快捷项")
         return added
     }
 
     private func applyStarter(merge: Bool) -> Int {
         let catalog = store.starter()
-        let hits = StarterLocator.find(catalog.items)
+        let curated = StarterLocator.find(catalog.items)
+        let taken = curated.map(\.path) + library.items.map(\.path)
+        let hits = curated + StarterLocator.installed(taken: taken)
         let built = StarterPack.compose(groups: catalog.groups, found: hits, ungrouped: catalog.ungrouped)
         if !merge {
             library.schemaVersion = 1

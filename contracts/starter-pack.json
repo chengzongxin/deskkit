@@ -4,7 +4,8 @@
   "groups": [
     { "id": "system", "name": "系统", "color": "#3B6CF6" },
     { "id": "tools", "name": "工具", "color": "#18A058" },
-    { "id": "web", "name": "上网", "color": "#F0A020" }
+    { "id": "web", "name": "上网", "color": "#F0A020" },
+    { "id": "apps", "name": "应用", "color": "#9B6CF6" }
   ],
   "items": [
     {

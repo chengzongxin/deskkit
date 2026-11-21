@@ -95,7 +95,7 @@ public sealed class Session
         Settings.StarterSeeded = true;
         Save();
         OnChange();
-        Log.Info(added == 0 ? "系统工具都已经在快捷启动里" : $"已放入 {added} 个系统工具");
+        Log.Info(added == 0 ? "系统工具和已安装应用都已经在快捷启动里" : $"已放入 {added} 个快捷项");
         return added;
     }
 
@@ -107,7 +107,9 @@ public sealed class Session
             item.Group,
             item.Windows.Title,
             item.Windows.Paths,
-            item.Windows.Names)).ToArray());
+            item.Windows.Names)).ToArray()).ToList();
+        var taken = hits.Select(hit => hit.Path).Concat(Library.Items.Select(item => item.Path));
+        hits.AddRange(StarterLocator.Installed(taken));
         var built = StarterPack.Compose(
             catalog.Groups,
             hits.Select(hit => new StarterFound(hit.Id, hit.Title, hit.Path, hit.GroupId)).ToArray(),

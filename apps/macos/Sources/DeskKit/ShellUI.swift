@@ -2072,7 +2072,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 ("多屏行为", "浮层靠近屏幕边缘自动内收，不跨屏裁切", menuButton(multiScreenTitle(), #selector(pickMultiScreen(_:))))
             ])
             y = settingsCard(doc, y, cardW, "快捷启动", [
-                ("系统工具", "把这台电脑上已有的系统工具和自带应用按分组加进去。已经有的不会重复添加", menuButton("放入", #selector(importStarter(_:))))
+                ("本机应用", "系统工具按分组放入，「应用程序」里的其他已安装应用放进「应用」。已经有的不会重复添加", menuButton("放入", #selector(importStarter(_:))))
             ])
             y = settingsCard(doc, y, cardW, "外观", [
                 ("主题", "浅色为默认。深色和跟随系统会立刻切换外观", choiceChips([("light", "浅色"), ("dark", "深色"), ("system", "跟随系统")], session.settings.theme, #selector(pickTheme(_:)))),
@@ -3098,8 +3098,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let alert = NSAlert()
         alert.messageText = added == 0 ? "已经在快捷启动里" : "已放入快捷启动"
         alert.informativeText = added == 0
-            ? "这台电脑上的系统工具都已经在快捷启动里，没有重复添加。"
-            : "新放入 \(added) 个系统工具，并按系统、工具、上网分好组。"
+            ? "能找到的系统工具和已安装应用都已经在快捷启动里，没有重复添加。"
+            : "新放入 \(added) 个。系统工具仍按系统、工具、上网分组，其余已安装应用放进「应用」。"
         alert.addButton(withTitle: "好")
         alert.runModal()
     }

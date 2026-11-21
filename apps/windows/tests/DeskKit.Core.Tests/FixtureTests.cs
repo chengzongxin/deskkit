@@ -113,7 +113,8 @@ public class FixtureTests
     public void StarterSkipsMissingAndEmptyGroups()
     {
         var catalog = store.Starter();
-        Assert.Equal(new[] { "#3B6CF6", "#18A058", "#F0A020" }, catalog.Groups.Select(group => group.Color).ToArray());
+        Assert.Equal(new[] { "#3B6CF6", "#18A058", "#F0A020", "#9B6CF6" }, catalog.Groups.Select(group => group.Color).ToArray());
+        Assert.Equal("应用", catalog.Groups[3].Name);
         Assert.Equal("#98A1B0", catalog.Ungrouped.Color);
         Assert.Equal("未分组", catalog.Ungrouped.Name);
 

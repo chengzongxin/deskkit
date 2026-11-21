@@ -107,7 +107,7 @@ public sealed class SettingsWindow : Window
         ]));
         page.Children.Add(C.Card("快捷启动",
         [
-            ("系统工具", "把这台电脑上已有的系统工具和自带应用按分组加进去。已经有的不会重复添加", C.Soft("放入", ImportStarter))
+            ("本机应用", "系统工具按分组放入，开始菜单里的其他已安装应用放进「应用」。已经有的不会重复添加", C.Soft("放入", ImportStarter))
         ]));
         page.Children.Add(C.Card("外观",
         [
@@ -336,14 +336,14 @@ public sealed class SettingsWindow : Window
         }
         catch (Exception ex)
         {
-            Log.Warn($"放入系统工具失败 {ex.Message}");
+            Log.Warn($"放入本机应用失败 {ex.Message}");
             System.Windows.MessageBox.Show("没能放进去。开始菜单有个目录读不到，这次没有写入。", "快捷启动");
             return;
         }
 
         var message = added == 0
-            ? "这台电脑上的系统工具都已经在快捷启动里，没有重复添加。"
-            : $"新放入 {added} 个系统工具，并按系统、工具、上网分好组。";
+            ? "能找到的系统工具和已安装应用都已经在快捷启动里，没有重复添加。"
+            : $"新放入 {added} 个。系统工具仍按系统、工具、上网分组，其余已安装应用放进「应用」。";
         System.Windows.MessageBox.Show(message, "快捷启动");
     }
 
