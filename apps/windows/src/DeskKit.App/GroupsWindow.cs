@@ -31,6 +31,8 @@ public sealed class GroupsWindow : Window
     Point navPressPoint;
     DispatcherTimer? navArmTimer;
     int blurGeneration;
+    bool externalDragOver;
+    int externalDragTick;
     Border? navDropHint;
     Border? dropVeil;
     TextBlock? dropTitle;
@@ -57,6 +59,7 @@ public sealed class GroupsWindow : Window
         DragOver += OnDragOver;
         DragLeave += (_, _) =>
         {
+            externalDragOver = false;
             HideDropHint();
             HideDragCaption();
         };
@@ -127,14 +130,46 @@ public sealed class GroupsWindow : Window
         }
 
         var token = ++blurGeneration;
-        await Task.Delay(150);
-        if (token != blurGeneration || IsActive || !IsVisible || shell.SuppressBlur)
+        if (HoldingForDrag())
         {
-            return;
+            // 点别的窗口时，失焦发生在鼠标按下的那一下。拖文件也是从这一下开始的。
+            Log.Info("鼠标仍按着，快捷启动先留着，方便拖进来");
         }
 
-        Log.Info("点击快捷启动窗口外，隐藏面板");
-        Dismiss();
+        while (token == blurGeneration && IsVisible && !IsActive && !shell.SuppressBlur)
+        {
+            if (HoldingForDrag())
+            {
+                await Task.Delay(40);
+                continue;
+            }
+
+            await Task.Delay(150);
+            if (token != blurGeneration || IsActive || !IsVisible || shell.SuppressBlur || HoldingForDrag())
+            {
+                if (HoldingForDrag())
+                {
+                    continue;
+                }
+
+                return;
+            }
+
+            Log.Info("点击快捷启动窗口外，隐藏面板");
+            Dismiss();
+            return;
+        }
+    }
+
+    /// <summary>左键还按着，或文件正拖在面板上。这两种时候都不能当成「点外面」。</summary>
+    bool HoldingForDrag()
+    {
+        if (NativeMethods.IsLeftButtonDown())
+        {
+            return true;
+        }
+
+        return externalDragOver && unchecked(Environment.TickCount - externalDragTick) < 600;
     }
 
     void KeepOpenWhileMenu(ContextMenu menu)
@@ -1125,10 +1160,7 @@ public sealed class GroupsWindow : Window
     UIElement Cell(Shortcut item, string sourceGroup)
     {
         var cell = new Grid { Width = 80, Height = 80, Margin = new Thickness(4), Cursor = Cursors.Hand };
-        var image = Icons.File(item.Path, 40);
-        UIElement icon = image != null
-            ? new Image { Source = image, Width = 40, Height = 40, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) }
-            : new TextBlock { Text = item.Kind == "url" ? Glyph.Link : Glyph.App, FontFamily = Chrome.IconFont, FontSize = 22, Foreground = C.Brush("accent"), HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 10, 0, 0) };
+        var icon = ShortcutIcon(item);
         var label = C.Label(item.Title, 11, FontWeights.Normal, "text.secondary");
         label.HorizontalAlignment = HorizontalAlignment.Center;
         label.VerticalAlignment = VerticalAlignment.Bottom;
@@ -1444,6 +1476,11 @@ public sealed class GroupsWindow : Window
         }
 
         var allowed = CanDrop(e);
+        externalDragOver = allowed;
+        if (allowed)
+        {
+            externalDragTick = Environment.TickCount;
+        }
         e.Effects = allowed ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
         if (!allowed)
@@ -1479,6 +1516,9 @@ public sealed class GroupsWindow : Window
             return;
         }
 
+        // 松手添加成功后窗口要留着。否则这次失焦的延时隐藏会把刚打开的面板收掉。
+        externalDragOver = false;
+        blurGeneration++;
         var groupId = DropTarget(GroupUnder(e));
         var added = 0;
         var total = 0;
@@ -1506,7 +1546,39 @@ public sealed class GroupsWindow : Window
         var name = S.Library.Groups.FirstOrDefault(group => group.Id == groupId)?.Name ?? groupId;
         Log.Info($"拖入完成，放入「{name}」{added} 个，共 {total} 个");
         Render();
+        Activate();
     }
+
+    UIElement ShortcutIcon(Shortcut item)
+    {
+        if (item.Kind == "url" || string.IsNullOrWhiteSpace(item.Path))
+        {
+            return ShortcutGlyph(item.Kind == "url" ? Glyph.Link : Glyph.App);
+        }
+
+        // 第二个参数是要更新的控件。不传的话只会留下「所有 exe 共用」的那张通用图。
+        var image = new Image
+        {
+            Width = 40,
+            Height = 40,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+        image.Source = Icons.File(item.Path, 40, image);
+        return image.Source != null ? image : ShortcutGlyph(Glyph.App);
+    }
+
+    TextBlock ShortcutGlyph(string glyph) => new()
+    {
+        Text = glyph,
+        FontFamily = Chrome.IconFont,
+        FontSize = 22,
+        Foreground = C.Brush("accent"),
+        HorizontalAlignment = HorizontalAlignment.Center,
+        Margin = new Thickness(0, 10, 0, 0)
+    };
 
     void EnableDrag(UIElement element)
     {

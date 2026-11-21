@@ -11,9 +11,11 @@ public static class Icons
 {
     static readonly ConcurrentDictionary<string, ImageSource> Exact = new(StringComparer.OrdinalIgnoreCase);
     static readonly ConcurrentDictionary<string, ImageSource> Generic = new(StringComparer.OrdinalIgnoreCase);
-    static readonly ConcurrentQueue<(string Path, int Size, Image Target)> Pending = new();
+    static readonly ConcurrentDictionary<string, Image> Targets = new(StringComparer.OrdinalIgnoreCase);
     static readonly ConcurrentDictionary<string, byte> Queued = new(StringComparer.OrdinalIgnoreCase);
-    static int pumping;
+    static readonly BlockingCollection<(string Path, int Size, string Key)> Jobs = new();
+    static readonly object Gate = new();
+    static Thread? worker;
 
     /// <summary>
     /// 先返回类型图标，输入不用等磁盘。应用和快捷方式的真图标在后台补上。
@@ -89,68 +91,100 @@ public static class Icons
 
     static void Enqueue(string path, int size, string key, Image target)
     {
-        if (Pending.Count > 16 || !Queued.TryAdd(key, 0))
+        // 界面重画时会换一块新的 Image。始终记住最新的那块，取完图标才不会画到已经扔掉的控件上。
+        Targets[key] = target;
+        if (!Queued.TryAdd(key, 0))
         {
             return;
         }
 
-        Pending.Enqueue((path, size, target));
-        if (Interlocked.CompareExchange(ref pumping, 1, 0) == 0)
+        if (Jobs.Count > 24)
         {
-            Task.Run(Pump);
+            Queued.TryRemove(key, out _);
+            return;
+        }
+
+        EnsureWorker();
+        Jobs.Add((path, size, key));
+    }
+
+    static void EnsureWorker()
+    {
+        if (worker != null)
+        {
+            return;
+        }
+
+        lock (Gate)
+        {
+            if (worker != null)
+            {
+                return;
+            }
+
+            // SHGetFileInfo 要在 STA 线程上调用。线程池是 MTA，经常只能拿到通用图标。
+            var thread = new Thread(Work)
+            {
+                IsBackground = true,
+                Name = "deskkit-icons"
+            };
+            thread.SetApartmentState(ApartmentState.STA);
+            worker = thread;
+            thread.Start();
         }
     }
 
-    static void Pump()
+    static void Work()
     {
-        try
+        foreach (var job in Jobs.GetConsumingEnumerable())
         {
-            while (Pending.TryDequeue(out var job))
+            var key = job.Key;
+            IntPtr handle = IntPtr.Zero;
+            try
             {
-                var key = job.Path + "#" + job.Size;
-                IntPtr handle = IntPtr.Zero;
+                var attributes = System.IO.Directory.Exists(job.Path) ? 0x10u : 0x80u;
+                handle = IconHandle(job.Path, attributes, job.Size, generic: false);
+            }
+            catch
+            {
+                handle = IntPtr.Zero;
+            }
+
+            if (handle == IntPtr.Zero)
+            {
+                Targets.TryRemove(key, out _);
+                Queued.TryRemove(key, out _);
+                continue;
+            }
+
+            var icon = handle;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher == null)
+            {
+                DestroyIcon(icon);
+                Targets.TryRemove(key, out _);
+                Queued.TryRemove(key, out _);
+                continue;
+            }
+
+            dispatcher.BeginInvoke(() =>
+            {
                 try
                 {
-                    var attributes = System.IO.Directory.Exists(job.Path) ? 0x10u : 0x80u;
-                    handle = IconHandle(job.Path, attributes, job.Size, generic: false);
+                    var image = Imaging.CreateBitmapSourceFromHIcon(icon, Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(job.Size, job.Size));
+                    image.Freeze();
+                    Exact[key] = image;
+                    if (Targets.TryRemove(key, out var current))
+                    {
+                        current.Source = image;
+                    }
                 }
-                catch
+                finally
                 {
-                    handle = IntPtr.Zero;
-                }
-
-                if (handle == IntPtr.Zero)
-                {
+                    DestroyIcon(icon);
                     Queued.TryRemove(key, out _);
-                    continue;
                 }
-
-                var icon = handle;
-                var target = job.Target;
-                System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
-                {
-                    try
-                    {
-                        var image = Imaging.CreateBitmapSourceFromHIcon(icon, Int32Rect.Empty, BitmapSizeOptions.FromWidthAndHeight(job.Size, job.Size));
-                        image.Freeze();
-                        Exact[key] = image;
-                        target.Source = image;
-                    }
-                    finally
-                    {
-                        DestroyIcon(icon);
-                        Queued.TryRemove(key, out _);
-                    }
-                }, System.Windows.Threading.DispatcherPriority.Background);
-            }
-        }
-        finally
-        {
-            Interlocked.Exchange(ref pumping, 0);
-            if (!Pending.IsEmpty && Interlocked.CompareExchange(ref pumping, 1, 0) == 0)
-            {
-                Task.Run(Pump);
-            }
+            }, System.Windows.Threading.DispatcherPriority.Background);
         }
     }
 

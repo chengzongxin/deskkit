@@ -56,6 +56,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private var groupsBlurArmed = false
     private var groupsBlurWork: DispatchWorkItem?
     private var suspendGroupsBlur = false
+    private var groupsExternalDrag = false
+    private var groupsKeepAfterDrop = false
     private var groupsMenuUsed = false
     private var settingsWindow: NSWindow?
     private var guideWindow: NSWindow?
@@ -1186,15 +1188,40 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     @objc private func groupsResigned() {
         guard session.settings.blurHide, !suspendGroupsBlur else { return }
         guard let window = groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
+        // 点别的窗口时，失焦发生在鼠标按下的那一下。拖文件也是从这一下开始的。
+        if groupsExternalDrag || NSEvent.pressedMouseButtons.contains(.left) {
+            Log.info("鼠标仍按着，快捷启动先留着，方便拖进来")
+            pollGroupsDragHold()
+            return
+        }
+        scheduleGroupsHide(after: 0.15)
+    }
+
+    private func pollGroupsDragHold() {
         groupsBlurWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.suspendGroupsBlur else { return }
+            guard let self, !self.suspendGroupsBlur, !self.groupsKeepAfterDrop else { return }
+            guard let window = self.groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
+            if self.groupsExternalDrag || NSEvent.pressedMouseButtons.contains(.left) {
+                self.pollGroupsDragHold()
+                return
+            }
+            self.scheduleGroupsHide(after: 0.15)
+        }
+        groupsBlurWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+    }
+
+    private func scheduleGroupsHide(after delay: TimeInterval) {
+        groupsBlurWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.suspendGroupsBlur, !self.groupsExternalDrag, !self.groupsKeepAfterDrop else { return }
             guard let window = self.groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
             Log.info("点击快捷启动窗口外，隐藏面板")
             self.dismissGroups()
         }
         groupsBlurWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func popGroupsMenu(_ menu: NSMenu, event: NSEvent, view: NSView) {
@@ -2768,13 +2795,23 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             guard let self, let root else { return [] }
             let operation = self.dropOperation(info)
             guard !operation.isEmpty else { return [] }
+            self.groupsExternalDrag = true
+            self.groupsBlurWork?.cancel()
             let groupId = self.dropTarget(hover: self.groupUnderCursor(info, in: root))
             self.showDropHint(groupId, in: root)
             return operation
         }
         root.onExit = { [weak self, weak root] in
             guard let self, let root else { return }
+            self.groupsExternalDrag = false
             self.hideDropHint(in: root)
+            if self.groupsKeepAfterDrop {
+                self.groupsKeepAfterDrop = false
+                return
+            }
+            if let window = self.groupsWindow, window.isVisible, !window.isKeyWindow {
+                self.groupsResigned()
+            }
         }
         root.onPerform = { [weak self, weak root] info in
             guard let self, let root else { return false }
@@ -2784,6 +2821,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 Log.warn("松手后没有读到文件或文件夹 类型=\(types)")
                 return false
             }
+            self.groupsBlurWork?.cancel()
+            self.groupsKeepAfterDrop = true
             let groupId = self.dropTarget(hover: self.groupUnderCursor(info, in: root))
             var added = 0
             for url in urls where self.session.addShortcut(url: url, groupId: groupId) {
@@ -2791,6 +2830,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             }
             let name = self.session.library.groups.first { $0.id == groupId }?.name ?? groupId
             Log.info("拖入完成，放入「\(name)」\(added) 个，共 \(urls.count) 个")
+            NSApp.activate(ignoringOtherApps: true)
+            self.groupsWindow?.makeKeyAndOrderFront(nil)
             DispatchQueue.main.async { [weak self] in self?.renderGroups() }
             return true
         }

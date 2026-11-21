@@ -107,6 +107,14 @@ public static class NativeMethods
     [DllImport("user32.dll")]
     static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
+    const int VkLButton = 0x01;
+
+    [DllImport("user32.dll")]
+    static extern short GetAsyncKeyState(int vKey);
+
+    /// <summary>左键是否还按着。失焦时用来区分「点一下外面」和「按住准备拖文件」。</summary>
+    public static bool IsLeftButtonDown() => (GetAsyncKeyState(VkLButton) & 0x8000) != 0;
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
