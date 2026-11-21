@@ -30,6 +30,13 @@ public struct StarterFound {
     public var title: String
     public var path: String
     public var groupId: String
+
+    public init(id: String, title: String, path: String, groupId: String) {
+        self.id = id
+        self.title = title
+        self.path = path
+        self.groupId = groupId
+    }
 }
 
 public struct StarterShortcut {

@@ -1189,7 +1189,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         guard session.settings.blurHide, !suspendGroupsBlur else { return }
         guard let window = groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
         // 点别的窗口时，失焦发生在鼠标按下的那一下。拖文件也是从这一下开始的。
-        if groupsExternalDrag || NSEvent.pressedMouseButtons.contains(.left) {
+        if groupsExternalDrag || leftMouseIsDown {
             Log.info("鼠标仍按着，快捷启动先留着，方便拖进来")
             pollGroupsDragHold()
             return
@@ -1197,12 +1197,17 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         scheduleGroupsHide(after: 0.15)
     }
 
+    /// 左键是最低一位。这个属性返回的是整数位标记，不是按钮集合。
+    private var leftMouseIsDown: Bool {
+        NSEvent.pressedMouseButtons & 1 != 0
+    }
+
     private func pollGroupsDragHold() {
         groupsBlurWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.suspendGroupsBlur, !self.groupsKeepAfterDrop else { return }
             guard let window = self.groupsWindow, window.isVisible, !window.isKeyWindow, window.attachedSheet == nil else { return }
-            if self.groupsExternalDrag || NSEvent.pressedMouseButtons.contains(.left) {
+            if self.groupsExternalDrag || self.leftMouseIsDown {
                 self.pollGroupsDragHold()
                 return
             }
