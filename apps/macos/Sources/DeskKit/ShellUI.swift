@@ -1422,6 +1422,62 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         return row
     }
 
+    /// 契约数字和 Windows 一样：格子 80、图标 40、文字 12，对应 960 宽的面板。
+    /// 窗口被拉宽时按同样比例放大，避免一行挤进十几个小图标。
+    private func shortcutTile(contentWidth: CGFloat) -> (cell: CGFloat, icon: CGFloat, label: CGFloat, gap: CGFloat, space: CGFloat) {
+        let cell = session.store.layout("cell", "shortcut")
+        let icon = session.store.layout("cell", "icon")
+        let label = session.store.layout("type", "cellLabel", "size")
+        let panel = session.store.layout("windows", "panel", "width")
+        let nav = session.store.layout("windows", "navWidth")
+        let baseCell = cell > 0 ? cell : 80
+        let baseIcon = icon > 0 ? icon : 40
+        let baseLabel = label > 0 ? label : 12
+        let design = max(480, (panel > 0 ? panel : 960) - (nav > 0 ? nav : 148))
+        let scale = min(3, max(1, contentWidth / design))
+        return (baseCell * scale, baseIcon * scale, baseLabel * scale, 4 * scale, 8 * scale)
+    }
+
+    private func addShortcutTile(_ item: Shortcut, groupId: String, index: Int, x: CGFloat, y: CGFloat, tile: (cell: CGFloat, icon: CGFloat, label: CGFloat, gap: CGFloat, space: CGFloat), parent: NSView) {
+        let cellView = HitRow(frame: NSRect(x: x, y: y, width: tile.cell, height: tile.cell))
+        cellView.wantsLayer = true
+        cellView.layer?.cornerRadius = tile.space
+        if panelEdit {
+            let badge = 18 * tile.space / 8
+            let del = HitRow(frame: NSRect(x: 2, y: 2, width: badge, height: badge))
+            del.wantsLayer = true
+            del.layer?.cornerRadius = 4
+            del.layer?.borderWidth = 1
+            del.layer?.borderColor = color("border.strong").cgColor
+            del.layer?.backgroundColor = color("bg.float").cgColor
+            let minus = UI.plain("−", badge * 0.75, .regular, color("text.secondary"), .center)
+            minus.frame = del.bounds
+            del.addSubview(minus)
+            let itemId = item.id
+            del.onClick = { [weak self] in self?.removeShortcut(id: itemId) }
+            cellView.addSubview(del)
+        }
+        let fileIcon = AppIcons.file(item.path, size: tile.icon)
+        if fileIcon == nil {
+            Log.warn("快捷项没有图标 \(item.title) 路径 \(item.path)")
+        }
+        let iconImage = fileIcon ?? AppIcons.symbol(item.kind == "url" ? "link" : "app.dashed", size: tile.icon, tint: color("accent"))
+        let labelFont = UI.font(tile.label, .regular)
+        let labelH = ceil(labelFont.boundingRectForFont.height)
+        let block = tile.icon + tile.gap + labelH
+        let top = max(tile.gap, (tile.cell - block) / 2)
+        let icon = AppIcons.view(image: iconImage, frame: NSRect(x: (tile.cell - tile.icon) / 2, y: top, width: tile.icon, height: tile.icon))
+        cellView.addSubview(icon)
+        let inset = tile.space / 2
+        let lbl = UI.plain(item.title, tile.label, .regular, color("text.primary"), .center)
+        lbl.truncates = true
+        lbl.frame = NSRect(x: inset, y: top + tile.icon + tile.gap, width: tile.cell - inset * 2, height: labelH)
+        cellView.addSubview(lbl)
+        bindShortcutCell(cellView, item: item, sourceGroup: groupId)
+        if panelEdit { wobble(cellView, index: index) }
+        parent.addSubview(cellView)
+    }
+
     private func drawPanelFocus(into canvas: NSView) {
         guard let group = session.library.groups.first(where: { $0.id == panelNav }) else {
             canvas.frame.size.height = 40
@@ -1431,8 +1487,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             .filter { panelSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(panelSearch) }
         let outer = uiEdge()
         let contentW = panelContentWidth(canvas)
-        let cell: CGFloat = 80
-        let cellGap: CGFloat = 8
+        let tile = shortcutTile(contentWidth: contentW)
+        let cell = tile.cell
+        let cellGap = tile.space
         let innerW = contentW - outer * 2
 
         if items.isEmpty, !panelEdit {
@@ -1463,34 +1520,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         var cx = outer
         var cy = outer
         for (index, item) in items.enumerated() {
-            let cellView = HitRow(frame: NSRect(x: cx, y: cy, width: cell, height: cell))
-            cellView.wantsLayer = true
-            cellView.layer?.cornerRadius = 8
-            if panelEdit {
-                let del = HitRow(frame: NSRect(x: 2, y: 2, width: 18, height: 18))
-                del.wantsLayer = true
-                del.layer?.cornerRadius = 4
-                del.layer?.borderWidth = 1
-                del.layer?.borderColor = color("border.strong").cgColor
-                del.layer?.backgroundColor = color("bg.float").cgColor
-                let minus = UI.plain("−", 14, .regular, color("text.secondary"), .center)
-                minus.frame = del.bounds
-                del.addSubview(minus)
-                let itemId = item.id
-                del.onClick = { [weak self] in self?.removeShortcut(id: itemId) }
-                cellView.addSubview(del)
-            }
-            let fileIcon = AppIcons.file(item.path, size: 40)
-            let iconImage = fileIcon ?? AppIcons.symbol(item.kind == "url" ? "link" : "app.dashed", size: 40, tint: color("accent"))
-            let icon = AppIcons.view(image: iconImage, frame: NSRect(x: (cell - 40) / 2, y: 6, width: 40, height: 40))
-            cellView.addSubview(icon)
-            let lbl = UI.plain(item.title, 11, .regular, color("text.secondary"), .center)
-            lbl.truncates = true
-            lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
-            cellView.addSubview(lbl)
-            bindShortcutCell(cellView, item: item, sourceGroup: group.id)
-            if panelEdit { wobble(cellView, index: index) }
-            canvas.addSubview(cellView)
+            addShortcutTile(item, groupId: group.id, index: index, x: cx, y: cy, tile: tile, parent: canvas)
             cx += cell + cellGap
             if cx + cell > outer + contentW - outer {
                 cx = outer
@@ -1500,12 +1530,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         if panelEdit {
             let add = HitRow(frame: NSRect(x: cx, y: cy, width: cell, height: cell))
             panelDashedDropZone(on: add, cornerRadius: 8)
-            let plus = UI.label("＋", 18, .regular, color("text.tertiary"))
+            let plus = UI.label("＋", tile.label + 6, .regular, color("text.tertiary"))
             plus.alignment = .center
-            plus.frame = NSRect(x: 0, y: 22, width: 80, height: 24)
-            let tip = UI.label("添加", 11, .regular, color("text.tertiary"))
+            plus.frame = NSRect(x: 0, y: cell * 0.28, width: cell, height: tile.label + 8)
+            let tip = UI.label("添加", tile.label, .regular, color("text.tertiary"))
             tip.alignment = .center
-            tip.frame = NSRect(x: 0, y: 48, width: 80, height: 16)
+            tip.frame = NSRect(x: 0, y: cell * 0.58, width: cell, height: tile.label + 4)
             add.addSubview(plus)
             add.addSubview(tip)
             add.onClick = { [weak self] in self?.addShortcut() }
@@ -1524,14 +1554,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let outer = uiEdge()
         let inner = uiEdge()
         let contentW = panelContentWidth(canvas)
+        let tile = shortcutTile(contentWidth: contentW)
         let cardGap: CGFloat = 12
         var y: CGFloat = outer
         for group in groups {
             let items = group.itemIds.compactMap { id in session.library.items.first { $0.id == id } }
                 .filter { panelSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(panelSearch) }
             let folded = foldedGroups.contains(group.id)
-            let cell: CGFloat = 80
-            let cellGap: CGFloat = 8
+            let cell = tile.cell
+            let cellGap = tile.space
             let cardW = contentW - outer * 2
             let content = cardW - inner * 2
             var cols = max(1, Int((content + cellGap) / (cell + cellGap)))
@@ -1582,37 +1613,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 var cx: CGFloat = inner
                 var cy: CGFloat = headH + 2
                 for (index, item) in items.enumerated() {
-                    let cellView = HitRow(frame: NSRect(x: cx, y: cy, width: cell, height: cell))
-                    cellView.wantsLayer = true
-                    cellView.layer?.cornerRadius = 8
-                    if panelEdit {
-                        let del = HitRow(frame: NSRect(x: 2, y: 2, width: 18, height: 18))
-                        del.wantsLayer = true
-                        del.layer?.cornerRadius = 4
-                        del.layer?.borderWidth = 1
-                        del.layer?.borderColor = color("border.strong").cgColor
-                        del.layer?.backgroundColor = color("bg.float").cgColor
-                        let minus = UI.plain("−", 14, .regular, color("text.secondary"), .center)
-                        minus.frame = del.bounds
-                        del.addSubview(minus)
-                        let itemId = item.id
-                        del.onClick = { [weak self] in self?.removeShortcut(id: itemId) }
-                        cellView.addSubview(del)
-                    }
-                    let fileIcon = AppIcons.file(item.path, size: 40)
-                    if fileIcon == nil {
-                        Log.warn("快捷项没有图标 \(item.title) 路径 \(item.path)")
-                    }
-                    let iconImage = fileIcon ?? AppIcons.symbol(item.kind == "url" ? "link" : "app.dashed", size: 40, tint: color("accent"))
-                    let icon = AppIcons.view(image: iconImage, frame: NSRect(x: (cell - 40) / 2, y: 6, width: 40, height: 40))
-                    cellView.addSubview(icon)
-                    let lbl = UI.plain(item.title, 11, .regular, color("text.secondary"), .center)
-                    lbl.truncates = true
-                    lbl.frame = NSRect(x: 4, y: 50, width: cell - 8, height: 20)
-                    cellView.addSubview(lbl)
-                    bindShortcutCell(cellView, item: item, sourceGroup: group.id)
-                    if panelEdit { wobble(cellView, index: index) }
-                    card.addSubview(cellView)
+                    addShortcutTile(item, groupId: group.id, index: index, x: cx, y: cy, tile: tile, parent: card)
                     cx += cell + gap
                     if cx + cell > card.bounds.width - inner {
                         cx = inner
@@ -1622,12 +1623,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 if panelEdit {
                     let add = HitRow(frame: NSRect(x: cx, y: cy, width: cell, height: cell))
                     panelDashedDropZone(on: add, cornerRadius: 8)
-                    let plus = UI.label("＋", 18, .regular, color("text.tertiary"))
+                    let plus = UI.label("＋", tile.label + 6, .regular, color("text.tertiary"))
                     plus.alignment = .center
-                    plus.frame = NSRect(x: 0, y: 22, width: 80, height: 24)
-                    let tip = UI.label("添加", 11, .regular, color("text.tertiary"))
+                    plus.frame = NSRect(x: 0, y: cell * 0.28, width: cell, height: tile.label + 8)
+                    let tip = UI.label("添加", tile.label, .regular, color("text.tertiary"))
                     tip.alignment = .center
-                    tip.frame = NSRect(x: 0, y: 48, width: 80, height: 16)
+                    tip.frame = NSRect(x: 0, y: cell * 0.58, width: cell, height: tile.label + 4)
                     add.addSubview(plus)
                     add.addSubview(tip)
                     add.onClick = { [weak self] in self?.addShortcut() }
@@ -2477,7 +2478,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     /// 滚轮向下换下一组，向上换上一组。和方向键是同一条路径。
     private func handleGroupWheel(_ event: NSEvent) -> Bool {
         guard event.window === groupsWindow, renamingGroupId == nil else { return false }
-        if event.momentumPhase != .none {
+        if !event.momentumPhase.isEmpty {
             return true
         }
 
