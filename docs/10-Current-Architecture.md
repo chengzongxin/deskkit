@@ -9,7 +9,7 @@
 
 ## 0. 结论
 
-Windows 用 **C++20 + Dear ImGui + DirectX 11**（`apps/windows-native`，和 Maye Nano 同一类原生绘制，不嵌浏览器）。macOS 用 **Swift + AppKit**。两端各写各的界面和业务代码，靠同一份 `contracts/` 和同一套测试夹具对齐。不设共享 Rust 核心，不上 WebView，不做插件运行时。原先的 C# / .NET 8 / WPF 工程留在 `apps/windows`，只作对照。
+Windows 用 **C++20 + Dear ImGui + DirectX 11**（`apps/windows`，和 Maye Nano 同一类原生绘制，不嵌浏览器）。macOS 用 **Swift + AppKit**。两端各写各的界面和业务代码，靠同一份 `contracts/` 和同一套测试夹具对齐。不设共享 Rust 核心，不上 WebView，不做插件运行时。仓库里只有这一份 Windows 工程。
 
 | 项 | 现行决定 |
 |---|---|
@@ -53,7 +53,7 @@ Windows 用 **C++20 + Dear ImGui + DirectX 11**（`apps/windows-native`，和 Ma
 | 2026-11-16 | 产品收窄：取消第三方插件；Windows 先行；数据 schema、快捷键语义、视觉规范、设置项结构仍然随时对齐 | **有效**，见 06 |
 | 2026-11-16 | 曾选「共享 Rust Core + Windows Win32 自绘 + macOS AppKit」，并用 80MB 否决 WPF | **Windows 半段作废**。macOS 的 Swift + AppKit 保留 |
 | 2026-11-16 | 用户要求 Windows 使用主流方案 | 已被 2026-11-22 覆盖。当时 Windows = C# / .NET 8 + WPF |
-| 2026-11-22 | 用户要求 Windows 改用 Maye Nano 的方案，功能原样迁移 | **有效**。Windows = C++20 / Dear ImGui / DirectX 11 |
+| 2026-11-22 | 用户要求 Windows 改用 Maye Nano 的方案，功能原样迁移 | **有效**。Windows = C++20 / Dear ImGui / DirectX 11，工程目录 `apps/windows`。C# / WPF 工程已删除 |
 | 2026-11-16 | macOS 按该品类主流实现 | **有效**。Swift + AppKit |
 
 80MB 曾经是选型门槛，用来否决 Electron、Flutter、Tauri 和 WPF。用户改选 Windows 主流方案之后，这条门槛不再用来挑选 Windows 技术栈。WPF 进程要常驻 CLR，内存会高于原生自绘。发布时记录实测 RSS，不把某个内存数字写成拒发条件。
@@ -93,7 +93,7 @@ Windows 用 **C++20 + Dear ImGui + DirectX 11**（`apps/windows-native`，和 Ma
 | 界面 | 尺寸 | 说明 |
 |---|---|---|
 | A 主启动器 | 宽 720；输入行 64；结果行 48；底栏 32；最高 480；距顶约 22% | 默认 / 输入 / 结果 / 空结果，另加工具专属态和工具内页 |
-| B 快捷启动面板 | 960×640，左导航 200 | 普通、编辑、拖拽。删除分组时一并删除组内快捷项（「未分组」不可删）。快捷项右键：移动到分组、打开所在文件夹、删除 |
+| B 快捷启动面板 | 960×640，左导航 148 | 普通、编辑、拖拽。删除分组时一并删除组内快捷项（「未分组」不可删）。快捷项右键：移动到分组、打开所在文件夹、删除。设置页左导航仍是 200 |
 | C 工具宫格 | 420×360；格子 112×96；内页 720×520 | 9 格。最后一格是排序和显示隐藏，不是添加插件 |
 | E 设置 | 1000×680 | 常规、快捷键、关于。系统权限在关于页，主程序更新在常规 |
 | F 引导 | 760×520 | 欢迎、录制呼出键、本平台系统权限和预置 5 组工具 |
@@ -116,10 +116,10 @@ flowchart TB
     C1["schema / keymap / tokens / layout"]
     C2["ui-state / triggers / i18n / permissions"]
   end
-  subgraph WIN["apps/windows · C# / .NET 8 / WPF"]
-    WA["DeskKit.App 界面"]
-    WC["DeskKit.Core 搜索、工具、状态机"]
-    WP["DeskKit.Platform Win32"]
+  subgraph WIN["apps/windows · C++20 / ImGui / DirectX 11"]
+    WA["chrome / ui 界面"]
+    WC["core / session 搜索、工具、状态机"]
+    WP["platform / main Win32"]
   end
   subgraph MAC["apps/macos · Swift / AppKit"]
     MA["UI"]
@@ -136,7 +136,7 @@ flowchart TB
   MC --> MP
 ```
 
-Windows 的 `DeskKit.Core` 不引用 WPF，也不调用 Win32。`DeskKit.Platform` 是 Windows 进程里唯一允许出现 Win32 的项目。界面只通过 Core 改状态，通过 Platform 做热键、托盘、索引和截图。
+Windows 的搜索、状态机和工具在 `core.cpp`、`session.cpp`。热键、托盘、索引、取色和窗口在 `platform.cpp`、`main.cpp`。界面在 `chrome.cpp`、`ui.cpp`，只通过 Session 改状态。
 
 macOS 同样分成 UI、纯逻辑、系统能力三块。纯逻辑不调用 AppKit。
 
@@ -160,12 +160,12 @@ deskkit/
 │   ├── permissions.json
 │   ├── platform-diffs.json
 │   └── fixtures/*.json
-├── apps/windows/                       T01 起
-│   ├── DeskKit.sln
-│   ├── src/DeskKit.App/
-│   ├── src/DeskKit.Core/
-│   ├── src/DeskKit.Platform/
-│   └── tests/DeskKit.Core.Tests/
+├── apps/windows/
+│   ├── CMakeLists.txt
+│   ├── src/{main,ui,chrome,core,platform,session,tests}.cpp
+│   ├── src/deskkit.hpp
+│   ├── assets/
+│   └── third_party/{imgui,json.hpp}
 ├── apps/macos/                         可与 Windows 并行开发，W8 发布
 │   ├── DeskKit.xcodeproj
 │   └── Sources/{Core,Platform,UI}/
@@ -217,26 +217,29 @@ deskkit/
 
 ## 5. Windows
 
-能运行的 Windows 程序在 `apps/windows-native`。用 CMake 生成，入口是 `deskkit.exe`。绘制是 Dear ImGui + DirectX 11。下面这张表是改语言之前的 C# 工程，代码还在 `apps/windows`，用来对照行为，不再是启动入口。
+能运行的 Windows 程序在 `apps/windows`。用 CMake 生成，入口是 `deskkit.exe`。绘制是 Dear ImGui + DirectX 11。
 
 ### 5.1 工程
 
-| 项目 | 目标框架 | 职责 |
-|---|---|---|
-| `DeskKit.Core` | `net8.0` | 搜索、拼音、排序、状态机、五组工具、设置迁移、契约校验、日志接口 |
-| `DeskKit.Platform` | `net8.0-windows` | 热键、托盘、剪贴板监听、应用和文件索引、取色、开机自启、DPI、数据目录 |
-| `DeskKit.App` | `net8.0-windows` | WPF 窗口和 ViewModel。引用 Core 和 Platform |
-| `DeskKit.Core.Tests` | `net8.0` | xUnit。不启动窗口 |
+| 文件 | 职责 |
+|---|---|
+| `src/main.cpp` | `WinMain`、窗口、消息循环、托盘、拖放 |
+| `src/ui.cpp` | ImGui 帧、字体、失焦隐藏 |
+| `src/chrome.cpp` | 启动器、快捷启动、工具宫格、设置、引导 |
+| `src/core.cpp` | 搜索、拼音、五组工具、契约读取 |
+| `src/session.cpp` | 状态机、分组、设置和持久化 |
+| `src/platform.cpp` | 热键、索引、剪贴板、取色、开机自启、数据目录 |
+| `src/tests.cpp` | 不启动窗口的逻辑测试，目标名 `deskkit_tests` |
+| `third_party/imgui` | Dear ImGui 源码。示例目录不参与编译，也不进仓库 |
+| `third_party/json.hpp` | JSON 读写 |
 
-启用 nullable。界面用 CommunityToolkit.Mvvm。Win32 用 CsWin32 生成，不手写大段 P/Invoke。日志用 `Microsoft.Extensions.Logging`。
-
-`DeskKit.App` 不直接枚举开始菜单、不直接注册热键。窗口句柄上必须做的样式钩子放在 Platform 的窗口宿主里。
+界面不直接枚举开始菜单，也不直接注册热键。窗口样式在 `main.cpp`。
 
 ### 5.2 进程和窗口
 
-一个常驻进程。索引构建在后台线程，完成后把不可变快照交给搜索。不另驻 worker。
+一个常驻进程。索引在后台准备好之后交给搜索。不另驻 worker。
 
-启动器是无边框、置顶的 WPF 窗口，`WindowStyle=None`，圆角和投影按 `layout.json` 画。使用 `WS_EX_TOOLWINDOW`，使它不单独占任务栏，常驻入口在托盘。
+窗口是 `WS_POPUP`，带 `WS_EX_TOOLWINDOW | WS_EX_TOPMOST`，不单独占任务栏。圆角用 DWM。常驻入口在托盘。
 
 呼出时窗口必须变成前台并聚焦输入框，否则无法打字。不要给这个窗口加 `WS_EX_NOACTIVATE`。隐藏之后再显示时重新激活。
 
@@ -253,7 +256,7 @@ DPI 使用 Per-Monitor V2。多屏默认跟随鼠标所在屏幕，浮层离屏�
 | 呼出热键 | 隐藏的消息窗口上 `RegisterHotKey(MOD_ALT, VK_SPACE)`。成功则该组合不再打开窗口系统菜单。失败时给出占用说明和改键 |
 | 托盘 | `Shell_NotifyIcon`。菜单：呼出、快捷启动面板、工具面板、设置、退出 |
 | 剪贴板 | `AddClipboardFormatListener`。历史数据放 Core，Platform 只负责监听和写入系统剪贴板 |
-| 取色 | `BitBlt` / `Graphics.CopyFromScreen` 取像素，HEX、RGB、HSL 换算放 Core。不用独立捕获进程 |
+| 取色 | 屏幕像素用 GDI 读取，HEX、RGB、HSL 换算放 Core。不用独立捕获进程 |
 | 拖入添加 | OLE `IDropTarget`，接收 exe、快捷方式、文件夹、网址 |
 | 开机自启 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`。不写 HKLM，不请求管理员 |
 | 数据目录 | `%APPDATA%\DeskKit`。界面只提供「打开数据目录」，不把原始路径当正文展示 |
@@ -262,9 +265,9 @@ DPI 使用 Per-Monitor V2。多屏默认跟随鼠标所在屏幕，浮层离屏�
 
 ### 5.4 发布
 
-`dotnet publish` 自包含发布 `win-x64` 和 `win-arm64`，目标机不必预装 .NET。默认不用单文件压缩，避免启动时解压拖过冷启动。
+`scripts/publish-win.ps1` 用 CMake 编出 `deskkit.exe`，和旁边的 `assets/` 一起打包。目标机不必预装运行库：MinGW 构建静态链接了 libgcc 和 libstdc++。
 
-最低系统 Windows 10 1809（build 17763）。主推 Windows 10 22H2 和 Windows 11。
+最低系统 Windows 10（`_WIN32_WINNT=0x0A00`）。主推 Windows 10 22H2 和 Windows 11。
 
 分发先做便携目录和 winget。签名用 Authenticode，放在发布闸门里，不阻塞第一版能跑起来。
 
@@ -398,7 +401,7 @@ W0 的 CI 只要求 Windows 作业成功。W8 起两端都成功才发布。
 
 | 任务 | 做什么 | 完成时能看到什么 |
 |---|---|---|
-| **T01** | `contracts/` 全部 JSON 和夹具；Windows 解决方案；空的 WPF 浮层；`Alt+Space` 能呼出并聚焦；托盘能退出 | `dotnet test` 通过契约夹具；热键能开关窗口 |
+| **T01** | `contracts/` 全部 JSON 和夹具；`apps/windows` 能编出 `deskkit.exe`；`Alt+Space` 能呼出并聚焦；托盘能退出 | `deskkit_tests` 通过契约夹具；热键能开关窗口 |
 | **T02** | Core：拼音搜索、算式、五个触发词、状态机、五组工具、设置原子写入和迁移 | 夹具全绿；断网时翻译给出离线提示；`520+999-1314` 得 205 |
 | **T03** | Windows 界面 A/B/C/E/F，索引，剪贴板，取色，引导，三态拖拽 | 留下的 P0 在 Windows 上能用键盘走通 |
 | **T04** | macOS 三层实现，接同一份契约和夹具；四项权限未授权时有引导 | 核心功能与 Windows 的夹具输出一致 |
@@ -412,9 +415,7 @@ T01 之前不要写搜索界面的业务逻辑。每个提交的代码都要能�
 
 ## 12. 本机环境
 
-2026-11-16 检查这台 macOS：已安装 Xcode 26.4.1 和 Swift 6.3.1，没有 .NET SDK。
-
-WPF 工程打开了 `EnableWindowsTargeting`，所以在这台 Mac 上可以编译，但不能运行。界面验收要在 Windows 上做：按 `Alt+Space` 看浮层是否出现。macOS 应用要等 T04，用本机的 Xcode 构建。
+界面验收在 Windows 上做：进入 `apps/windows`，用 CMake 编出 `deskkit.exe`，按 `Alt+Space` 看浮层是否出现。macOS 用 `apps/macos/build-app.sh`。逻辑测试目标是 `deskkit_tests`，不弹出窗口。
 
 ## 13. 仍未定、但不阻塞 T01
 

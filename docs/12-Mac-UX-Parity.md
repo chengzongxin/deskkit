@@ -8,16 +8,16 @@
 
 ## 这次在 macOS 上做了什么
 
-| # | 行为 | macOS 落点 | Windows 还缺什么 |
+| # | 行为 | macOS 落点 | Windows 落点 |
 |---|---|---|---|
-| 1 | 切换分组、折叠、搜索时，窗口停在原地，内容区和侧栏的滚动位置保留 | `ShellUI.renderGroups` | `GroupsWindow.Render` 记下 `VerticalOffset`，画完后 `ScrollToVerticalOffset` |
-| 2 | 窗口出现用 120ms 淡入，隐藏用 150ms 淡出 | `fadeIn` / `fadeOut` | `Chrome.FadeIn` / `FadeOut`，时长 `motionMs.show`、`motionMs.blurHide`。后一次动画使前一次收尾失效。截图前把透明度拉回 1 |
-| 3 | 长按约 0.25 秒后图标抬起（放大 1.05、透明度 0.92），光标变成抓取，旁边出现提示 | `HitRow` + `trackShortcutMove` | 按住 250ms 后 `DoDragDrop`，`Lift` 放大，`GiveFeedback` 用手型光标，旁边显示提示 |
-| 4 | 鼠标停在侧栏行或快捷项上时有浅底 | 侧栏 `accent.soft` 45%，快捷项 `bg.hover` | 侧栏 `MouseEnter` 用 `accent.soft` 的 45% 透明度，快捷项用 `bg.hover`。选中行保持选中色 |
-| 5 | 编辑模式的抖动更小，并且会停 | `wobble`：左右约 0.86 度，0.14 秒，来回 6 次 | `GroupsWindow.Wobble`，同样幅度和次数 |
-| 6 | 快捷启动里，上下键换分组，回车打开当前视图里的第一个快捷项 | `handleGroupsKey` | `OnPreviewKeyDown`。搜索框或重命名框有焦点时不抢走上下键和回车。Esc 先取消重命名，再关闭 |
-| 7 | 编辑模式下，在同一分组里拖到另一个格子上可以改顺序。拖到别的分组仍然是移动 | `Session.reorderShortcut` | `Session.ReorderShortcut`。格子 `Tag` 为 `cell\|分组id\|快捷项id`。中线以上排到前面。载荷仍是 `deskkit-shortcut` |
-| 8 | 新建分组追加在列表末尾，并立刻进入重命名、焦点在输入框 | `addGroup` 设置 `renamingGroupId` | `AddGroup` 在 `Render()` 之前设 `renaming`，输入框 `Loaded` 时获得焦点 |
+| 1 | 切换分组、折叠、搜索时，窗口停在原地，内容区和侧栏的滚动位置保留 | `ShellUI.renderGroups` | `chrome.cpp` 的 `DrawGroups` 保留滚动位置 |
+| 2 | 窗口出现用 120ms 淡入，隐藏用 150ms 淡出 | `fadeIn` / `fadeOut` | `ui.cpp` 读 `motionMs.show`、`motionMs.blurHide` |
+| 3 | 长按约 0.25 秒后图标抬起（放大 1.05、透明度 0.92），光标变成抓取，旁边出现提示 | `HitRow` + `trackShortcutMove` | `DrawGroups` 按住约 250ms 后开始拖动，图标略放大，旁边显示提示 |
+| 4 | 鼠标停在侧栏行或快捷项上时有浅底 | 侧栏 `accent.soft` 45%，快捷项 `bg.hover` | `DrawGroups` 侧栏用 `accent.soft`，快捷项用 `bg.hover`。选中行保持选中色 |
+| 5 | 编辑模式的抖动更小，并且会停 | `wobble`：左右约 0.86 度，0.14 秒，来回 6 次 | `chrome.cpp` 同样幅度和次数 |
+| 6 | 快捷启动里，上下键换分组，回车打开当前视图里的第一个快捷项 | `handleGroupsKey` | `DrawGroups` 的按键处理。搜索框或重命名框有焦点时不抢走上下键和回车。Esc 先取消重命名，再关闭 |
+| 7 | 编辑模式下，在同一分组里拖到另一个格子上可以改顺序。拖到别的分组仍然是移动 | `Session.reorderShortcut` | `session.cpp` 的 `ReorderShortcut`。中线以上排到前面 |
+| 8 | 新建分组追加在列表末尾，并立刻进入重命名、焦点在输入框 | `addGroup` 设置 `renamingGroupId` | `chrome.cpp` 的 `AddGroup`，新行立刻进入重命名并获得焦点 |
 
 ## 提示文案
 
@@ -41,10 +41,10 @@
 
 ## Windows 落点
 
-- `apps/windows/src/DeskKit.App/GroupsWindow.cs`：滚动位置、悬停、长按反馈、键盘、新建后聚焦、编辑态组内拖动。
-- `apps/windows/src/DeskKit.App/Session.cs`：`ReorderShortcut`。先从该分组的 `itemIds` 里拿掉，再按锚点插入；锚点找不到就不动。
-- `apps/windows/src/DeskKit.App/Chrome.cs` 与 `Shell.cs`：搜索窗和快捷启动的 120ms / 150ms 淡入淡出。
-- 提示文案用上面的三个键，不写死在 C# 里。
+- `apps/windows/src/chrome.cpp` 的 `DrawGroups`：滚动位置、悬停、长按反馈、键盘、新建后聚焦、编辑态组内拖动。
+- `apps/windows/src/session.cpp` 的 `Session::ReorderShortcut`：先从该分组的 `itemIds` 里拿掉，再按锚点插入；锚点找不到就不动。
+- `apps/windows/src/ui.cpp`：搜索窗和快捷启动的失焦隐藏。时长读 `motionMs.show`、`motionMs.blurHide`。
+- 提示文案用上面的三个键，不写死在界面代码里。
 
 ## macOS 上怎么验收
 

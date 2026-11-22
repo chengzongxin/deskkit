@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DeskKitNative LANGUAGES CXX RC)
+project(DeskKit LANGUAGES CXX RC)
 
 # Windows 端按 Maye Nano 的方式：C++20 + Dear ImGui + DirectX 11。不嵌浏览器。
 set(CMAKE_CXX_STANDARD 20)
@@ -39,6 +39,8 @@ add_executable(deskkit WIN32
   assets/deskkit.rc
   ${IMGUI_SRC}
 )
+set_source_files_properties(assets/deskkit.rc PROPERTIES
+  INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 target_include_directories(deskkit PRIVATE
   src
   ${CMAKE_SOURCE_DIR}/third_party

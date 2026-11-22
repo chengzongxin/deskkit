@@ -1,5 +1,5 @@
 ---
-description: DeskKit 现行开发约束（Windows WPF，macOS AppKit）
+description: DeskKit 现行开发约束（Windows C++/ImGui，macOS AppKit）
 alwaysApply: true
 ---
 
@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 技术栈
 
-- Windows：C++20 / Dear ImGui / DirectX 11，工程在 `apps/windows-native`。系统调用直接用 Win32。原来的 C# / WPF 工程留在 `apps/windows`，只作对照。
+- Windows：C++20 / Dear ImGui / DirectX 11，工程在 `apps/windows`。系统调用直接用 Win32。
 - macOS：Swift + AppKit。主界面不用 SwiftUI，不用 WKWebView。
 - 两端各写业务代码。对齐靠 `contracts/` 和同一套夹具，不设共享 Rust 核心。
 - 不做插件、不做 WebView、不引入 Tauri、Electron、WinUI 3、Flutter。
@@ -29,4 +29,4 @@ alwaysApply: true
 
 ## 环境
 
-本机是 macOS 时，WPF 工程可以编译，但不能运行。界面验收放到 Windows 上。`net8.0` 的 Core 测试可以在 macOS 上跑。
+界面验收在 Windows 上做：编译 `apps/windows`，按 `Alt+Space` 看浮层是否出现。macOS 用 `apps/macos/build-app.sh`。逻辑测试是 `apps/windows` 里的 `deskkit_tests`。

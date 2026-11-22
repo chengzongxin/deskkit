@@ -500,7 +500,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         MessageBoxW(nullptr, L"找不到 contracts 目录，DeskKit 无法启动。", L"DeskKit", MB_OK);
         return 1;
     }
-    std::string pinyin = *root + "\\..\\apps\\windows-native\\assets\\pinyin.txt";
+    std::string pinyin = *root + "\\..\\apps\\windows\\assets\\pinyin.txt";
     if (GetFileAttributesW(L"assets\\pinyin.txt") != INVALID_FILE_ATTRIBUTES) pinyin = "assets\\pinyin.txt";
     wchar_t module[MAX_PATH];
     GetModuleFileNameW(nullptr, module, MAX_PATH);

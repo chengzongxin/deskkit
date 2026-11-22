@@ -2,7 +2,7 @@
 
 > 版本 v1.0 ｜ 生成 2026-11-13
 > 关联可运行参考：`prototype/index.html`（单文件 208,228 bytes / md5 `1fc47e74727696c2fa21a9c7a104d293`，CSS+JS 全内联，`file://` 双击离线可开，QA 140 项断言全通过）。
-> 本文描述的是已验收原型的交互，不是生产技术栈。生产代码按 [`docs/10-Current-Architecture.md`](../docs/10-Current-Architecture.md) 用 WPF 和 AppKit 重写，不要复制原型里的模拟数据。
+> 本文描述的是已验收原型的交互，不是生产技术栈。生产代码按 [`docs/10-Current-Architecture.md`](../docs/10-Current-Architecture.md) 用 C++/ImGui 和 AppKit 重写，不要复制原型里的模拟数据。
 >
 > **可以照做的章**：第 2 章状态机（把 `TRIGGER` 改称 `TOOL`）、第 3 章键盘、第 5 章视觉 token、第 7 章内置工具算法、第 9.1 / 9.4 / 9.5 节、第 10 章里原型能看见的四类差异。
 >

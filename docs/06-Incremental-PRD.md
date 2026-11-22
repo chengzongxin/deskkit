@@ -1,6 +1,6 @@
 # 06 增量 PRD 与竞品技术栈调研（2026-11 方向变更）
 
-> **需求边界仍以本文为准。** 技术选型已定稿，见 [`docs/10-Current-Architecture.md`](10-Current-Architecture.md)：Windows 为 C# / .NET 8 + WPF，macOS 为 Swift + AppKit。本文写明不做选型，栈以该文为准。
+> **需求边界仍以本文为准。** 技术选型已定稿，见 [`docs/10-Current-Architecture.md`](10-Current-Architecture.md)：Windows 为 C++20 / Dear ImGui / DirectX 11（`apps/windows`），macOS 为 Swift + AppKit。本文写明不做选型，栈以该文为准。文中 2026-11-16 的「Windows 用 WPF」是当时的记录，已被 2026-11-22 的决定覆盖。竞品表格仍是当时的调研，不要当成现行技术栈。
 
 > 文档版本：v1.0 ｜ 撰写：许清楚（产品经理）｜ 团队：software-deskkit ｜ 核实日期：**2026-11-16**
 > 上游：`docs/01-PRD.md`（原 PRD）、`docs/02-Architecture.md` 与 `docs/05-Architecture-Review.md`（原 Tauri v2 选型与复核）

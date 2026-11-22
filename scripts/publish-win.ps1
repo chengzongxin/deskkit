@@ -1,4 +1,4 @@
-﻿# DeskKit Windows 自包含发布 (win-x64)
+﻿# DeskKit Windows 便携包
 # 用法:
 #   .\scripts\publish-win.ps1
 #   .\scripts\publish-win.ps1 -SyncLocal          # 同步到 %LocalAppData%\DeskKit\app
@@ -12,65 +12,83 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$Proj = Join-Path $Root "apps\windows\src\DeskKit.App\DeskKit.App.csproj"
-$Publish = Join-Path $Root "apps\windows\src\DeskKit.App\bin\Release\net8.0-windows\win-x64\publish"
+$Src = Join-Path $Root "apps\windows"
+$Build = Join-Path $Src "build"
 $VersionFile = Join-Path $Root "release\version.json"
 
-$dotnet = Get-Command dotnet -ErrorAction SilentlyContinue
-if (-not $dotnet) {
-    $candidate = Join-Path $env:LOCALAPPDATA "Microsoft\dotnet\dotnet.exe"
-    if (-not (Test-Path $candidate)) {
-        Write-Error "找不到 dotnet。请安装 .NET 8 SDK，或将 dotnet 加入 PATH。"
+function Find-Gcc {
+    $cmd = Get-Command gcc -ErrorAction SilentlyContinue
+    if ($cmd) { return Split-Path $cmd.Source }
+    $roots = @(
+        (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"),
+        "C:\mingw64\bin"
+    )
+    foreach ($root in $roots) {
+        if (-not (Test-Path $root)) { continue }
+        $hit = Get-ChildItem $root -Filter gcc.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "mingw64\\bin\\gcc.exe$" } |
+            Select-Object -First 1
+        if ($hit) { return $hit.DirectoryName }
     }
-    $dotnet = $candidate
-} else {
-    $dotnet = $dotnet.Source
+    return $null
 }
 
 if ($KillRunning) {
-    $procs = Get-Process -Name "DeskKit.App" -ErrorAction SilentlyContinue
+    $procs = Get-Process -Name "deskkit" -ErrorAction SilentlyContinue
     if ($procs) {
-        Write-Host "正在结束 $($procs.Count) 个 DeskKit.App 进程..."
+        Write-Host "正在结束 $($procs.Count) 个 deskkit 进程..."
         $procs | Stop-Process -Force
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 1
     }
 } else {
-    $locked = Get-Process -Name "DeskKit.App" -ErrorAction SilentlyContinue
+    $locked = Get-Process -Name "deskkit" -ErrorAction SilentlyContinue
     if ($locked) {
-        Write-Warning "检测到 DeskKit 仍在运行，publish 可能因文件被锁失败。可加 -KillRunning 先退出进程。"
+        Write-Warning "检测到 deskkit 仍在运行，链接可能因文件被锁失败。可加 -KillRunning 先退出进程。"
     }
 }
 
-Write-Host "dotnet publish (Release, win-x64, self-contained)..."
-& $dotnet publish $Proj `
-    -c Release `
-    -r win-x64 `
-    --self-contained true `
-    /p:PublishSingleFile=false `
-    /p:DebugType=None `
-    /p:DebugSymbols=false
-
-if (-not (Test-Path (Join-Path $Publish "DeskKit.App.exe"))) {
-    Write-Error "未找到输出: $Publish\DeskKit.App.exe"
+$gccBin = Find-Gcc
+if (-not $gccBin) {
+    Write-Error "找不到 gcc。请安装 WinLibs（MinGW），或把 mingw64\bin 加入 PATH。"
 }
+$env:PATH = "$gccBin;$env:PATH"
 
-Write-Host "完成: $Publish"
+Write-Host "CMake 配置 $Src ..."
+cmake -S $Src -B $Build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+if ($LASTEXITCODE -ne 0) { Write-Error "CMake 配置失败" }
+
+Write-Host "编译 deskkit ..."
+cmake --build $Build --target deskkit
+if ($LASTEXITCODE -ne 0) { Write-Error "编译失败" }
+
+$exe = Join-Path $Build "deskkit.exe"
+if (-not (Test-Path $exe)) {
+    Write-Error "未找到输出: $exe"
+}
+Write-Host "完成: $exe"
+
+$stage = Join-Path $Build "portable"
+if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+New-Item -ItemType Directory -Force -Path $stage | Out-Null
+Copy-Item $exe $stage
+Copy-Item (Join-Path $Build "assets") (Join-Path $stage "assets") -Recurse
 
 if ($SyncLocal) {
     $dest = Join-Path $env:LOCALAPPDATA "DeskKit\app"
     New-Item -ItemType Directory -Force -Path $dest | Out-Null
     Write-Host "同步到 $dest ..."
-    robocopy $Publish $dest /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $stage $dest /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) {
         Write-Error "robocopy 失败 (exit $LASTEXITCODE)"
     }
-    Write-Host "已更新: $(Join-Path $dest 'DeskKit.App.exe')"
+    $global:LASTEXITCODE = 0
+    Write-Host "已更新: $(Join-Path $dest 'deskkit.exe')"
 }
 
 if ($Zip) {
     $dist = Join-Path $Root "release\dist"
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
-    $version = "0.9.0"
+    $version = "0.9.2-win"
     if (Test-Path $VersionFile) {
         try {
             $meta = Get-Content $VersionFile -Raw | ConvertFrom-Json
@@ -83,6 +101,6 @@ if ($Zip) {
     $zip = Join-Path $dist $zipName
     if (Test-Path $zip) { Remove-Item $zip -Force }
     Write-Host "打包 $zip ..."
-    Compress-Archive -Path (Join-Path $Publish "*") -DestinationPath $zip -CompressionLevel Optimal
+    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
     Write-Host "zip 大小: $([math]::Round((Get-Item $zip).Length / 1MB, 2)) MB"
 }

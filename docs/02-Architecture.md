@@ -2,4 +2,4 @@
 
 全文在 [`docs/archive/02-Architecture.md`](archive/02-Architecture.md)。不要按它实现。
 
-现行架构见 [`docs/10-Current-Architecture.md`](10-Current-Architecture.md)：Windows 为 C# / .NET 8 + WPF，macOS 为 Swift + AppKit。
+现行架构见 [`docs/10-Current-Architecture.md`](10-Current-Architecture.md)：Windows 为 C++20 / Dear ImGui / DirectX 11，macOS 为 Swift + AppKit。

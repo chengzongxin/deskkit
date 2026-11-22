@@ -15,23 +15,12 @@
 
 ## 技术栈
 
-| 端 | 栈 | 何时 |
+| 端 | 栈 | 目录 |
 |---|---|---|
-| Windows | C# / .NET 8 / WPF | 第一版 |
-| macOS | Swift + AppKit | 最晚 8 周后对齐核心功能 |
+| Windows | C++20 / Dear ImGui / DirectX 11 | `apps/windows` |
+| macOS | Swift + AppKit | `apps/macos` |
 
-没有插件运行时，没有 WebView，没有共享 Rust 核心。
-
-## 本机环境（2026-11-16）
-
-这台机器是 macOS，已有 Xcode 26.4.1 和 Swift 6.3.1。NET 8 SDK 装在 `~/.dotnet`。如果终端找不到 `dotnet`，先执行：
-
-```bash
-export PATH="$HOME/.dotnet:$PATH"
-export DOTNET_ROOT="$HOME/.dotnet"
-```
-
-WPF 工程在 Mac 上可以编译，但不能弹出窗口。呼出热键要到 Windows 上验收。
+没有插件运行时，没有 WebView，没有共享 Rust 核心。仓库里只有这一份 Windows 工程。
 
 ## macOS
 
@@ -42,22 +31,27 @@ open apps/macos/build/DeskKit.app
 
 第一次会打开欢迎窗口。点「授予辅助功能」，在系统设置里允许 DeskKit，然后点「开始使用」。之后用 `⌥+Space` 呼出。菜单栏上的 D 也可以打开。日志在 `~/Library/Application Support/DeskKit/logs/deskkit.log`。
 
-## 构建
+## Windows
 
-Core 测试在 macOS 上可以跑：
+在 `apps/windows` 用 CMake 生成。需要能编译 C++20 的工具链，以及 DirectX 11 的库（Windows SDK 或 MinGW 自带）。
 
-```bash
-dotnet test apps/windows/tests/DeskKit.Core.Tests
+```powershell
+cmake -S apps/windows -B apps/windows/build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build apps/windows/build --target deskkit
+apps/windows/build/deskkit.exe
 ```
 
-主程序是 WPF，只能在 Windows 上编译和运行：
+逻辑测试不弹出窗口：
 
-```bash
-dotnet run --project apps/windows/src/DeskKit.App
+```powershell
+cmake --build apps/windows/build --target deskkit_tests
+apps/windows/build/deskkit_tests.exe
 ```
 
-启动后不显示窗口。按 `Alt+Space` 呼出，再按一次或 `Esc` 隐藏。右键托盘图标可以退出。日志写在 `%APPDATA%\DeskKit\logs\deskkit.log`。
+从仓库根目录启动，程序才能找到 `contracts/`。启动后不显示窗口。按 `Alt+Space` 呼出，再按一次或逐级 `Esc` 退回后隐藏。右键托盘图标可以退出。日志写在 `%APPDATA%\DeskKit\logs\deskkit.log`。
 
-## 下一步
+便携包：
 
-T01 的契约、状态机和空浮层已经在仓库里。下一步是 T02：拼音搜索和五组内置工具。
+```powershell
+.\scripts\publish-win.ps1 -Zip
+```
