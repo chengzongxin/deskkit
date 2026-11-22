@@ -3,6 +3,7 @@
 ## 0.9.3-win
 
 - Windows 程序改为 C++ / Dear ImGui。便携包里带上 `deskkit.exe`、拼音表和 `contracts`，解压后可以直接运行。
+- 便携包把编译器的运行库打进 exe。其他 Windows 10 / 11 电脑不再因为缺少 `libwinpthread-1.dll` 而无法启动。
 
 ## 0.9.2-win
 

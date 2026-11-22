@@ -51,13 +51,15 @@ target_include_directories(deskkit PRIVATE
 target_compile_definitions(deskkit PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_link_libraries(deskkit PRIVATE deskkit_core d3d11 dxgi d3dcompiler dwmapi dcomp windowscodecs)
 if(MINGW)
-  target_link_options(deskkit PRIVATE -static-libgcc -static-libstdc++ -mwindows)
+  # -static 会把 libgcc、libstdc++、libwinpthread 打进 exe。
+  # 只写 -static-libgcc 时，别的电脑没有 MinGW 的 libwinpthread-1.dll，启动就会失败。
+  target_link_options(deskkit PRIVATE -static -mwindows)
 endif()
 
 add_executable(deskkit_tests src/tests.cpp)
 target_link_libraries(deskkit_tests PRIVATE deskkit_core)
 if(MINGW)
-  target_link_options(deskkit_tests PRIVATE -static-libgcc -static-libstdc++)
+  target_link_options(deskkit_tests PRIVATE -static)
 endif()
 
 # 拼音表和契约不打进 exe，运行时从仓库或程序旁边找。
