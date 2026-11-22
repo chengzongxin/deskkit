@@ -39,6 +39,8 @@ public sealed class GroupsWindow : Window
     Border? dropHighlight;
     ScrollViewer? contentScroller;
     ScrollViewer? navScroller;
+    int wheelBucket;
+    bool snapNav;
     Border? dragCaption;
     TextBlock? dragCaptionText;
     Chrome C => shell.Chrome;
@@ -67,11 +69,28 @@ public sealed class GroupsWindow : Window
         PreviewMouseMove += (_, e) => UpdateResizeCursor(e.GetPosition(this));
         PreviewMouseLeftButtonDown += OnPanelMouseDown;
         PreviewKeyDown += OnPreviewKeyDown;
+        PreviewMouseWheel += OnPreviewMouseWheel;
+        PreviewKeyUp += SwallowAlt;
+    }
+
+    static void SwallowAlt(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftAlt or Key.RightAlt)
+        {
+            e.Handled = true;
+        }
     }
 
     void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is Key.LeftAlt or Key.RightAlt)
+        {
+            e.Handled = true;
+            return;
+        }
+
         var typing = renaming != null || Keyboard.FocusedElement is TextBox;
         if (key == Key.Escape)
         {
@@ -113,6 +132,35 @@ public sealed class GroupsWindow : Window
         {
             OpenFirstShortcut();
             e.Handled = true;
+        }
+    }
+
+    /// <summary>滚轮和上下方向键一样，一次一格切换分组。触控板的小幅度会先攒够再换。</summary>
+    void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (renaming != null || externalDragOver)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        wheelBucket += e.Delta;
+        var steps = 0;
+        while (wheelBucket >= 120)
+        {
+            wheelBucket -= 120;
+            steps--;
+        }
+
+        while (wheelBucket <= -120)
+        {
+            wheelBucket += 120;
+            steps++;
+        }
+
+        if (steps != 0)
+        {
+            MoveNav(steps);
         }
     }
 
@@ -229,7 +277,29 @@ public sealed class GroupsWindow : Window
         }
 
         nav = ids[next];
+        snapNav = true;
+        Log.Info($"切换分组 {nav}");
         Render();
+    }
+
+    static FrameworkElement? FindChildByName(DependencyObject root, string name)
+    {
+        if (root is FrameworkElement element && element.Name == name)
+        {
+            return element;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var found = FindChildByName(VisualTreeHelper.GetChild(root, i), name);
+            if (found != null)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     void OpenFirstShortcut()
@@ -269,6 +339,8 @@ public sealed class GroupsWindow : Window
 
         var savedContent = contentScroller?.VerticalOffset ?? 0;
         var savedNav = navScroller?.VerticalOffset ?? 0;
+        var pinNav = snapNav;
+        snapNav = false;
         rendering = true;
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
@@ -451,8 +523,19 @@ public sealed class GroupsWindow : Window
         var navTarget = navScroller;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
         {
-            contentTarget?.ScrollToVerticalOffset(savedContent);
-            navTarget?.ScrollToVerticalOffset(savedNav);
+            if (pinNav)
+            {
+                contentTarget?.ScrollToVerticalOffset(0);
+                if (navTarget != null)
+                {
+                    FindChildByName(navTarget, nav)?.BringIntoView();
+                }
+            }
+            else
+            {
+                contentTarget?.ScrollToVerticalOffset(savedContent);
+                navTarget?.ScrollToVerticalOffset(savedNav);
+            }
         });
         rendering = false;
         Log.Info($"打开快捷启动面板 {Width:0}x{Height:0}");

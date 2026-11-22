@@ -134,6 +134,7 @@ public sealed class LauncherWindow : Window
 
         box.TextChanged += OnTextChanged;
         PreviewKeyDown += OnKey;
+        PreviewKeyUp += SwallowAlt;
         Deactivated += (_, _) => OnBlur();
         Rebuild();
     }
@@ -639,6 +640,13 @@ public sealed class LauncherWindow : Window
     void OnKey(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (IsAltKey(key))
+        {
+            // Alt 留给全局热键。交给输入框的话，松开时会弹出系统菜单，下一次就关不掉。
+            e.Handled = true;
+            return;
+        }
+
         if (!box.IsKeyboardFocusWithin)
         {
             box.Focus();
@@ -824,6 +832,17 @@ public sealed class LauncherWindow : Window
         var rgb = DeskKit.Core.ColorConvert.Parse(input);
         return rgb == null ? null : $"#{rgb.Value.R:X2}{rgb.Value.G:X2}{rgb.Value.B:X2}";
     }
+
+    static void SwallowAlt(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (IsAltKey(key))
+        {
+            e.Handled = true;
+        }
+    }
+
+    static bool IsAltKey(Key key) => key is Key.LeftAlt or Key.RightAlt;
 
     public void FocusSearch(string reason)
     {

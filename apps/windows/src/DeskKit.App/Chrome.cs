@@ -413,7 +413,24 @@ public sealed class Chrome
         {
             var hwnd = new WindowInteropHelper(window).Handle;
             NativeMethods.MakeToolWindow(hwnd);
+            if (PresentationSource.FromVisual(window) is HwndSource source)
+            {
+                source.AddHook(SuppressAltMenu);
+            }
         };
+    }
+
+    /// <summary>Alt 松开时系统会发“打开窗口菜单”。吃掉它，避免菜单挡住下一次隐藏。</summary>
+    static IntPtr SuppressAltMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int wmSysCommand = 0x0112;
+        const int scKeyMenu = 0xF100;
+        if (msg == wmSysCommand && (wParam.ToInt32() & 0xFFF0) == scKeyMenu)
+        {
+            handled = true;
+        }
+
+        return IntPtr.Zero;
     }
 
     /// <summary>出现 120ms、消失 150ms。后一次动画会使前一次的收尾失效。</summary>
@@ -438,7 +455,18 @@ public sealed class Chrome
     public void FadeOut(Window window, Action done)
     {
         var token = NextFade(window);
-        var animation = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(Motion("blurHide")))
+        // 从屏幕上此刻的透明度接着淡出。出现动画还没走完就隐藏时，不会先跳到完全不透明。
+        var from = window.Opacity;
+        if (double.IsNaN(from) || from < 0)
+        {
+            from = 0;
+        }
+        else if (from > 1)
+        {
+            from = 1;
+        }
+
+        var animation = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(Motion("blurHide") * Math.Max(from, 0.2)))
         {
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         };

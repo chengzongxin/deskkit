@@ -480,9 +480,10 @@ public sealed class Session
             Log.Info("呼出浮层");
             OnShow?.Invoke();
         }
-        else if ((DateTime.UtcNow - shownAt).TotalSeconds < 0.45)
+        else if ((DateTime.UtcNow - shownAt).TotalMilliseconds < 160)
         {
-            Log.Info("忽略刚呼出后的重复热键");
+            // 同一次按下有时会送进两条热键消息。只挡这一小段，紧接着再按一次仍然能隐藏。
+            Log.Info("忽略同一次按键带出的重复呼出");
         }
         else
         {

@@ -108,6 +108,8 @@ public static class NativeMethods
     static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 
     const int VkLButton = 0x01;
+    const byte VkLMenu = 0xA4;
+    const byte VkRMenu = 0xA5;
 
     [DllImport("user32.dll")]
     static extern short GetAsyncKeyState(int vKey);
@@ -165,8 +167,26 @@ public static class NativeMethods
         }
     }
 
-    /// <summary>热键里的 Alt 松开后要补一次抬起，否则接下来打字会带着 Alt。</summary>
-    public static void ReleaseAlt() => keybd_event(VkMenu, 0, KeyeventfKeyup, UIntPtr.Zero);
+    /// <summary>左 Alt 或右 Alt 现在是否还按着。热键消息到达时，人往往还没松手。</summary>
+    public static bool IsAltDown() => IsKeyDown(VkMenu) || IsKeyDown(VkLMenu) || IsKeyDown(VkRMenu);
+
+    static bool IsKeyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
+
+    /// <summary>
+    /// 人已经松开 Alt 时，补一次抬起，避免下一个字母仍带着 Alt。
+    /// 还按着就不能补：那一下会把按键状态翻过来，松手后 Alt 一直处于按下。
+    /// 呼出热键带了“不重复”，Alt 卡住后 Alt+Space 不会再来，浮层就关不掉。
+    /// 还按着时什么都不做，等手指松开的那一下自己把状态清掉。
+    /// </summary>
+    public static void ReleaseAlt()
+    {
+        if (IsAltDown())
+        {
+            return;
+        }
+
+        keybd_event(VkMenu, 0, KeyeventfKeyup, UIntPtr.Zero);
+    }
 }
 
 public static class AutoStart

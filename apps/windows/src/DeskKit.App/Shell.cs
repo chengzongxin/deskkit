@@ -17,6 +17,7 @@ public sealed class Shell
     public bool SuppressBlur { get; set; }
     public string? RecordingHotkey { get; set; }
     public event Action? HotkeyChanged;
+    int launcherShow;
 
     public Shell(Session session)
     {
@@ -50,19 +51,28 @@ public sealed class Shell
 
     public void ShowLauncher()
     {
+        var show = ++launcherShow;
         Launcher.BeginAnimation(UIElement.OpacityProperty, null);
         Launcher.Opacity = 0;
         Chrome.PresentLauncher(Launcher);
         Chrome.FadeIn(Launcher);
         Launcher.LockFrame();
         Launcher.Rebuild();
-        Launcher.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+        // 按住 Alt 先 Space 再 D 时，快捷启动会马上抢走焦点。晚到的聚焦不能再把焦点抢回来。
+        void FocusIfCurrent(string reason)
         {
+            if (show != launcherShow || !Launcher.IsVisible || Session.Machine.State == "HIDDEN")
+            {
+                return;
+            }
+
             Launcher.LockFrame();
             Launcher.EnforceFrame();
-            Launcher.FocusSearch("呼出");
-        });
-        Launcher.Dispatcher.BeginInvoke(() => Launcher.FocusSearch("呼出延迟"));
+            Launcher.FocusSearch(reason);
+        }
+
+        Launcher.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => FocusIfCurrent("呼出"));
+        Launcher.Dispatcher.BeginInvoke(() => FocusIfCurrent("呼出延迟"));
         Log.Info($"浮层 {Launcher.Width:0}x{Launcher.Height:0} 状态 {Session.Machine.State}");
     }
 
@@ -83,6 +93,8 @@ public sealed class Shell
 
     public void ShowGroups()
     {
+        // 取消启动器还没执行的延迟聚焦，避免两个窗口来回抢前台。
+        launcherShow++;
         var fresh = !Groups.IsVisible;
         if (fresh)
         {

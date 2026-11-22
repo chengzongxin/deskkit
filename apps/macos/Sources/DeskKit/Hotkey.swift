@@ -104,6 +104,19 @@ final class HotkeyMonitor {
             return Unmanaged.passUnretained(event)
         }
         let code = event.getIntegerValueField(.keyboardEventKeycode)
+        // 抬起只按键码认。按住 Option 连按 Space 和 D 时，抬起往往已经不带 Option。
+        // 若还要求修饰键一致，held 会一直为真，之后的热键全被吃掉，窗口就关不掉。
+        if type == .keyUp {
+            var swallow = false
+            for index in chords.indices where chords[index].keyCode == code && chords[index].held {
+                chords[index].held = false
+                swallow = true
+            }
+            return swallow ? nil : Unmanaged.passUnretained(event)
+        }
+        guard type == .keyDown else {
+            return Unmanaged.passUnretained(event)
+        }
         let flags = event.flags
         let alt = flags.contains(.maskAlternate)
         let command = flags.contains(.maskCommand)
@@ -112,13 +125,11 @@ final class HotkeyMonitor {
         guard let index = chords.firstIndex(where: { $0.matches(code: code, alt: alt, command: command, control: control, shift: shift) }) else {
             return Unmanaged.passUnretained(event)
         }
-        // 一次按下只触发一次。抬起和连发都吃掉，避免刚打开又被关掉。
+        // 连发、以及同一次按下里的第二条 keyDown 都吃掉，避免刚打开又被关掉。
         let repeating = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-        if type != .keyDown || repeating {
-            if type == .keyUp { chords[index].held = false }
+        if repeating || chords[index].held {
             return nil
         }
-        if chords[index].held { return nil }
         chords[index].held = true
         let name = chords[index].name
         let fire = chords[index].onFire

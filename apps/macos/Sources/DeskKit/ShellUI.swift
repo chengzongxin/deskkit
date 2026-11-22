@@ -65,6 +65,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private var settingsTab = "general"
     private var guideStep = 1
     private var panelNav = "all"
+    private var resetPanelScroll = false
+    private var groupWheelBucket = 0.0
     private var panelEdit = false
     private var renamingGroupId: String?
     private var renamingCommit = false
@@ -75,6 +77,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private var activeTool = ""
     private var toolMode = "grid"
     private var blurWork: DispatchWorkItem?
+    private var launcherShow = 0
     private var lastToolOutput = ""
     private var hotkeyReady = false
     private var homeList: [Hit] = []
@@ -132,11 +135,17 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             }
             return event
         }
+        NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self else { return event }
+            return self.handleGroupWheel(event) ? nil : event
+        }
     }
 
     // MARK: - Public
 
     func showLauncher() {
+        let show = launcherShow + 1
+        launcherShow = show
         blurWork?.cancel()
         rebuildLauncher()
         place(launcher, topRatio: session.store.layout("launcher", "topRatio"))
@@ -146,9 +155,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         launcher.makeKeyAndOrderFront(nil)
         fadeIn(launcher)
         focusSearchField(reason: "呼出")
-        // 激活时机晚一拍时再抢一次焦点，避免看起来能呼出却打不了字
+        // 激活时机晚一拍时再抢一次焦点，避免看起来能呼出却打不了字。
+        // 这段时间里如果已经打开了快捷启动，就不要再把焦点抢回来。
         DispatchQueue.main.async { [weak self] in
-            self?.focusSearchField(reason: "呼出延迟")
+            guard let self, show == self.launcherShow else { return }
+            guard self.launcher.isVisible, self.session.machine.state != "HIDDEN" else { return }
+            self.focusSearchField(reason: "呼出延迟")
         }
         Log.info("浮层 \(Int(launcher.frame.width))x\(Int(launcher.frame.height)) 状态 \(session.machine.state)")
     }
@@ -179,7 +191,11 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
 
     func showTools() { openToolGrid() }
     func showTool(_ id: String) { openToolPage(id) }
-    func showGroups() { renderGroups() }
+    func showGroups() {
+        // 取消搜索窗还没执行的延迟聚焦，避免两个窗口来回抢前台。
+        launcherShow += 1
+        renderGroups()
+    }
 
     func toggleGroups() {
         if groupsWindow?.isVisible == true {
@@ -828,8 +844,14 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         dropHighlight = nil
         let preset = NSSize(width: session.store.layout("windows", "panel", "width"), height: session.store.layout("windows", "panel", "height"))
         let window = groupsWindow ?? makeWindow("DeskKit 快捷启动", preset)
-        let savedContent = (window.contentView?.find(id: "panel-content-scroll") as? NSScrollView)?.contentView.bounds.origin
-        let savedNav = (window.contentView?.find(id: "panel-nav-scroll") as? NSScrollView)?.contentView.bounds.origin
+        let keepScroll = !resetPanelScroll
+        resetPanelScroll = false
+        let savedContent: NSPoint? = keepScroll
+            ? (window.contentView?.find(id: "panel-content-scroll") as? NSScrollView)?.contentView.bounds.origin
+            : nil
+        let savedNav: NSPoint? = keepScroll
+            ? (window.contentView?.find(id: "panel-nav-scroll") as? NSScrollView)?.contentView.bounds.origin
+            : nil
         window.minSize = NSSize(width: 760, height: 480)
         window.contentMinSize = window.minSize
         let opening = !window.isVisible
@@ -1032,6 +1054,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         if let savedNav {
             listScroll.contentView.scroll(to: savedNav)
             listScroll.reflectScrolledClipView(listScroll.contentView)
+        } else if panelNav != "all", let row = list.subviews.first(where: { ($0 as? NavGroupRow)?.groupId == panelNav }) {
+            listScroll.contentView.scrollToVisible(row.frame)
         }
         applyBackground(to: root)
 
@@ -1087,6 +1111,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let rowH: CGFloat = 36
         let edge = uiEdge()
         let row = HitRow(frame: NSRect(x: edge, y: y, width: navW - edge * 2, height: rowH))
+        row.identifier = NSUserInterfaceItemIdentifier("nav-\(id)")
         row.wantsLayer = true
         row.layer?.cornerRadius = 8
         row.layer?.backgroundColor = (on ? color("accent.soft") : NSColor.clear).cgColor
@@ -2495,23 +2520,62 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     private func handleGroupsKey(_ event: NSEvent) -> Bool {
-        let ids = ["all"] + session.library.groups.filter { $0.id != "fav" }.map(\.id)
-        guard let index = ids.firstIndex(of: panelNav) else { return false }
         switch event.keyCode {
         case 125:
-            panelNav = ids[min(index + 1, ids.count - 1)]
-            renderGroups()
-            return true
+            return movePanelNav(1)
         case 126:
-            panelNav = ids[max(index - 1, 0)]
-            renderGroups()
-            return true
+            return movePanelNav(-1)
         case 36, 76:
             openFirstShortcut()
             return true
         default:
             return false
         }
+    }
+
+    /// 滚轮向下换下一组，向上换上一组。和方向键是同一条路径。
+    private func handleGroupWheel(_ event: NSEvent) -> Bool {
+        guard event.window === groupsWindow, renamingGroupId == nil else { return false }
+        if event.momentumPhase != .none {
+            return true
+        }
+
+        if event.phase == .began {
+            groupWheelBucket = 0
+        }
+
+        var steps = 0
+        if event.hasPreciseScrollingDeltas {
+            groupWheelBucket += event.scrollingDeltaY
+            let threshold = 48.0
+            while groupWheelBucket >= threshold {
+                groupWheelBucket -= threshold
+                steps -= 1
+            }
+            while groupWheelBucket <= -threshold {
+                groupWheelBucket += threshold
+                steps += 1
+            }
+        } else if event.scrollingDeltaY != 0 {
+            steps = event.scrollingDeltaY > 0 ? -1 : 1
+        }
+
+        if steps != 0 {
+            _ = movePanelNav(steps)
+        }
+        return true
+    }
+
+    private func movePanelNav(_ delta: Int) -> Bool {
+        let ids = ["all"] + session.library.groups.filter { $0.id != "fav" }.map(\.id)
+        guard let index = ids.firstIndex(of: panelNav) else { return false }
+        let next = min(max(index + delta, 0), ids.count - 1)
+        guard ids[next] != panelNav else { return true }
+        panelNav = ids[next]
+        resetPanelScroll = true
+        Log.info("切换分组 \(panelNav)")
+        renderGroups()
+        return true
     }
 
     private func openFirstShortcut() {
