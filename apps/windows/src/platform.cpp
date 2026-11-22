@@ -12,6 +12,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 
@@ -182,15 +183,37 @@ void AddHit(IndexBag& bag, const std::string& id, const std::string& kind, const
     bag.hits.push_back(IndexedEntry{id, kind, title, subtitle, path, words, score});
 }
 
+template <class Visit>
+void ForEachChild(const fs::path& directory, Visit visit) {
+    // range-for 的 ++ 遇到「无效参数」会抛异常，把启动过程直接终止。这里改用带错误码的步进。
+    std::error_code error;
+    fs::directory_iterator cursor(directory, fs::directory_options::skip_permission_denied, error);
+    if (error) return;
+    const fs::directory_iterator end;
+    while (cursor != end) {
+        fs::directory_entry entry = *cursor;
+        error.clear();
+        cursor.increment(error);
+        const bool stop = static_cast<bool>(error);
+        visit(entry);
+        if (stop) break;
+    }
+}
+
+bool ReparsePoint(const fs::directory_entry& entry) {
+    std::error_code error;
+    return entry.is_symlink(error) || static_cast<bool>(error);
+}
+
 void WalkShortcuts(const fs::path& directory, IndexBag& bag) {
     if (bag.hits.size() > 1500) return;
-    std::error_code error;
-    for (const auto& entry : fs::directory_iterator(directory, error)) {
-        if (error) return;
-        if (entry.is_directory()) continue;
-        if (!EqualsInsensitive(entry.path().extension().string(), ".lnk")) continue;
+    ForEachChild(directory, [&](const fs::directory_entry& entry) {
+        if (ReparsePoint(entry)) return;
+        std::error_code status;
+        if (entry.is_directory(status) || status) return;
+        if (!EqualsInsensitive(entry.path().extension().string(), ".lnk")) return;
         const std::string title = Narrow(entry.path().stem().wstring());
-        if (title.rfind("卸载", 0) == 0 || Contains(title, "Uninstall")) continue;
+        if (title.rfind("卸载", 0) == 0 || Contains(title, "Uninstall")) return;
         std::string target;
         try {
             target = ResolveShortcut(entry.path().string());
@@ -201,12 +224,13 @@ void WalkShortcuts(const fs::path& directory, IndexBag& bag) {
         const std::string kind = target.rfind("http", 0) == 0 ? "url" : "app";
         const std::string id = kind == "url" ? "url-" + target : "app-" + entry.path().string();
         AddHit(bag, id, kind, title, target, entry.path().string(), 30);
-        if (bag.hits.size() > 1500) return;
-    }
-    for (const auto& entry : fs::directory_iterator(directory, error)) {
-        if (error) return;
-        if (entry.is_directory()) WalkShortcuts(entry.path(), bag);
-    }
+    });
+    if (bag.hits.size() > 1500) return;
+    ForEachChild(directory, [&](const fs::directory_entry& entry) {
+        if (ReparsePoint(entry)) return;
+        std::error_code status;
+        if (entry.is_directory(status) && !status) WalkShortcuts(entry.path(), bag);
+    });
 }
 
 void AddAppPaths(IndexBag& bag, HKEY hive) {
@@ -240,14 +264,14 @@ void AppendFile(const fs::path& path, IndexBag& bag, int depth, int& count) {
     if (name.empty() || name[0] == '.' || EqualsInsensitive(path.extension().string(), ".lnk")) return;
     AddHit(bag, "file-" + path.string(), "file", name, path.string(), path.string(), 20);
     ++count;
-    if (depth >= 1 || !fs::is_directory(path)) return;
-    std::error_code error;
+    std::error_code directory;
+    if (depth >= 1 || !fs::is_directory(path, directory) || directory) return;
     int taken = 0;
-    for (const auto& child : fs::directory_iterator(path, error)) {
-        if (error || taken >= 40) break;
+    ForEachChild(path, [&](const fs::directory_entry& child) {
+        if (taken >= 40) return;
         AppendFile(child.path(), bag, depth + 1, count);
         ++taken;
-    }
+    });
 }
 
 const std::vector<std::string>& SkipFolders() {
@@ -273,26 +297,31 @@ bool SkipTarget(const std::string& target) {
 }
 
 void CollectInstalled(const fs::path& directory, std::vector<StarterHit>& hits, std::unordered_map<std::string, bool>& taken) {
-    std::error_code error;
-    for (const auto& entry : fs::directory_iterator(directory, error)) {
-        if (error) return;
-        if (!entry.is_regular_file() || !EqualsInsensitive(entry.path().extension().string(), ".lnk")) continue;
+    ForEachChild(directory, [&](const fs::directory_entry& entry) {
+        if (ReparsePoint(entry)) return;
+        std::error_code status;
+        if (entry.is_directory(status) || status) return;
+        status.clear();
+        if (!entry.is_regular_file(status) || status || !EqualsInsensitive(entry.path().extension().string(), ".lnk")) return;
         const std::string title = Narrow(entry.path().stem().wstring());
-        if (SkipTitle(title)) continue;
+        if (SkipTitle(title)) return;
         const std::string target = ResolveShortcut(entry.path().string());
         std::string stored = entry.path().string();
         if (!target.empty()) {
-            if (target.rfind("http", 0) == 0 || fs::is_directory(Widen(target)) || SkipTarget(target)) continue;
-            if (fs::exists(Widen(target))) stored = target;
+            std::error_code kind;
+            if (target.rfind("http", 0) == 0 || fs::is_directory(Widen(target), kind) || SkipTarget(target)) return;
+            kind.clear();
+            if (fs::exists(Widen(target), kind) && !kind) stored = target;
         }
-        if (taken[LowerAscii(stored)]) continue;
+        if (taken[LowerAscii(stored)]) return;
         taken[LowerAscii(stored)] = true;
         hits.push_back(StarterHit{Sha256FilePrefix(LowerAscii(stored), 12).insert(0, "app-"), "apps", title, stored});
-    }
-    for (const auto& entry : fs::directory_iterator(directory, error)) {
-        if (error) return;
-        if (entry.is_directory() && !FolderSkipped(entry.path())) CollectInstalled(entry.path(), hits, taken);
-    }
+    });
+    ForEachChild(directory, [&](const fs::directory_entry& entry) {
+        if (ReparsePoint(entry)) return;
+        std::error_code status;
+        if (entry.is_directory(status) && !status && !FolderSkipped(entry.path())) CollectInstalled(entry.path(), hits, taken);
+    });
 }
 
 HWND g_hotkeyWindow = nullptr;
@@ -596,18 +625,24 @@ std::vector<StarterHit> FindStarter(const std::vector<StarterQuery>& items) {
         if (namesReady) return;
         namesReady = true;
         for (const std::string& root : {Known(FOLDERID_StartMenu), Known(FOLDERID_CommonStartMenu)}) {
-            if (root.empty() || !fs::exists(Widen(root))) continue;
-            std::error_code error;
-            for (const auto& entry : fs::recursive_directory_iterator(fs::path(Widen(root)), fs::directory_options::skip_permission_denied, error)) {
-                if (error) {
-                    error.clear();
-                    continue;
-                }
-                if (!entry.is_regular_file() || !EqualsInsensitive(entry.path().extension().string(), ".lnk")) continue;
-                const std::string name = Narrow(entry.path().stem().wstring());
-                if (name.rfind("卸载", 0) == 0 || Contains(name, "Uninstall")) continue;
-                if (!names.contains(LowerAscii(name))) names[LowerAscii(name)] = entry.path().string();
-            }
+            std::error_code present;
+            if (root.empty() || !fs::exists(Widen(root), present) || present) continue;
+            std::function<void(const fs::path&)> walk = [&](const fs::path& directory) {
+                ForEachChild(directory, [&](const fs::directory_entry& entry) {
+                    if (ReparsePoint(entry)) return;
+                    std::error_code status;
+                    if (entry.is_directory(status)) {
+                        if (!status) walk(entry.path());
+                        return;
+                    }
+                    status.clear();
+                    if (!entry.is_regular_file(status) || status || !EqualsInsensitive(entry.path().extension().string(), ".lnk")) return;
+                    const std::string name = Narrow(entry.path().stem().wstring());
+                    if (name.rfind("卸载", 0) == 0 || Contains(name, "Uninstall")) return;
+                    if (!names.contains(LowerAscii(name))) names[LowerAscii(name)] = entry.path().string();
+                });
+            };
+            walk(fs::path(Widen(root)));
         }
     };
     std::vector<StarterHit> hits;

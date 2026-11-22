@@ -118,14 +118,38 @@ std::optional<std::string> ContractStore::Locate(const std::string& start) {
     return std::nullopt;
 }
 
+void CollectFiles(const fs::path& directory, const fs::path& root, std::vector<std::string>& files) {
+    // 不用 recursive_directory_iterator。MinGW 碰到无法进入的目录会抛异常，程序直接退出。
+    std::error_code error;
+    fs::directory_iterator cursor(directory, fs::directory_options::skip_permission_denied, error);
+    if (error) return;
+    const fs::directory_iterator end;
+    while (cursor != end) {
+        fs::directory_entry entry = *cursor;
+        error.clear();
+        cursor.increment(error);
+        const bool stop = static_cast<bool>(error);
+        std::error_code status;
+        if (entry.is_symlink(status) || status) {
+            if (stop) break;
+            continue;
+        }
+        status.clear();
+        if (entry.is_directory(status) && !status) CollectFiles(entry.path(), root, files);
+        else if (!status) {
+            status.clear();
+            if (entry.is_regular_file(status) && !status) {
+                std::string relative = entry.path().lexically_relative(root).generic_string();
+                if (!(relative.size() >= 9 && relative.ends_with(".DS_Store"))) files.push_back(relative);
+            }
+        }
+        if (stop) break;
+    }
+}
+
 std::string ContractStore::HashTree(const std::string& root) {
     std::vector<std::string> files;
-    for (const auto& entry : fs::recursive_directory_iterator(root)) {
-        if (!entry.is_regular_file()) continue;
-        std::string relative = entry.path().lexically_relative(root).generic_string();
-        if (relative.size() >= 9 && relative.ends_with(".DS_Store")) continue;
-        files.push_back(relative);
-    }
+    CollectFiles(fs::path(root), fs::path(root), files);
     std::sort(files.begin(), files.end());
 
     BCRYPT_ALG_HANDLE algorithm = nullptr;

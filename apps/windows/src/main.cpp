@@ -3,6 +3,8 @@
 
 #include "deskkit.hpp"
 
+#include <optional>
+
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
@@ -517,7 +519,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     }
     dk::LoadPinyinTable(pinyin);
 
-    dk::Session session((dk::ContractStore(*root)));
+    std::optional<dk::Session> sessionHolder;
+    try {
+        sessionHolder.emplace(dk::ContractStore(*root));
+    } catch (const std::exception& ex) {
+        wchar_t message[1024];
+        MultiByteToWideChar(CP_UTF8, 0, ex.what(), -1, message, 1024);
+        MessageBoxW(nullptr, message[0] ? message : L"启动时发生错误。", L"DeskKit 启动失败", MB_OK | MB_ICONERROR);
+        OleUninitialize();
+        return 1;
+    }
+    dk::Session& session = *sessionHolder;
     session.SetIndex(dk::ToolHits());
     dk::Shell shell;
     shell.session = &session;
