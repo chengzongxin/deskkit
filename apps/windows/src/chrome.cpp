@@ -2004,7 +2004,7 @@ void DrawSettings(Shell& shell) {
         EndCard();
     } else {
         BeginCard(shell, "version", "");
-        BeginRow("DeskKit 0.9.3", "Windows 版是 C++ / ImGui 便携包，解压即可运行。");
+        BeginRow("DeskKit 0.9.4", "Windows 版是 C++ / ImGui 便携包，解压后双击即可打开窗口。");
         ImGui::Text("当前版本");
         EndCard();
         std::string diffs;
@@ -2017,7 +2017,7 @@ void DrawSettings(Shell& shell) {
         ImGui::Text("来自契约");
         EndCard();
         BeginCard(shell, "notes", "更新日志");
-        BeginRow("0.9.3", "Windows 程序改为 C++ / ImGui。便携包带上拼音表和契约，解压即可运行。");
+        BeginRow("0.9.4", "双击会打开窗口。显卡初始化失败时会说明原因，不再直接退出。");
         ImGui::Text("当前版本");
         EndCard();
         BeginCard(shell, "permissions", "Windows 系统能力");
@@ -2039,7 +2039,7 @@ void DrawSettings(Shell& shell) {
         ImGui::SameLine();
         if (SoftButton(shell, "export-about", "导出")) ExportData(shell);
         BeginRow("检查更新", session.settings.autoUpdate ? "已开启启动检查。现在可以手动查一次" : "自动检查已关闭，仍可手动查看版本");
-        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.0，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.0。", L"检查更新", MB_OK);
+        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.4，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.4。", L"检查更新", MB_OK);
         BeginRow("重新走引导", "三步引导可以再看一遍");
         if (SoftButton(shell, "reguide", "重新引导")) {
             session.settings.guideDone = false;

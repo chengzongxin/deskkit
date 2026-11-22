@@ -90,7 +90,7 @@ if ($SyncLocal) {
 if ($Zip) {
     $dist = Join-Path $Root "release\dist"
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
-    $version = "0.9.3-win"
+    $version = "0.9.4-win"
     if (Test-Path $VersionFile) {
         try {
             $meta = Get-Content $VersionFile -Raw | ConvertFrom-Json

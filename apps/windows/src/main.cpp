@@ -80,7 +80,10 @@ bool CreateDevice(HWND hwnd) {
     const UINT height = std::max(1, static_cast<int>(rect.bottom - rect.top));
     D3D_FEATURE_LEVEL level;
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_0};
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 2, D3D11_SDK_VERSION, &g_device, &level, &g_context))) return false;
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 2, D3D11_SDK_VERSION, &g_device, &level, &g_context))) {
+        dk::LogWarn("硬件显卡初始化失败，改用软件绘制");
+        if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels, 2, D3D11_SDK_VERSION, &g_device, &level, &g_context))) return false;
+    }
     IDXGIDevice* dxgiDevice = nullptr;
     IDXGIAdapter* adapter = nullptr;
     IDXGIFactory2* factory = nullptr;
@@ -132,7 +135,8 @@ bool CreateDevice(HWND hwnd) {
         legacy.SampleDesc.Count = 1;
         legacy.Windowed = TRUE;
         legacy.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-        if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 2, D3D11_SDK_VERSION, &legacy, &g_swap, &g_device, &level, &g_context))) return false;
+        if (FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 2, D3D11_SDK_VERSION, &legacy, &g_swap, &g_device, &level, &g_context)) &&
+            FAILED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, levels, 2, D3D11_SDK_VERSION, &legacy, &g_swap, &g_device, &level, &g_context))) return false;
     }
     return CreateRenderTarget();
 }
@@ -497,7 +501,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     OleInitialize(nullptr);
     const auto root = dk::ContractStore::Locate();
     if (!root) {
-        MessageBoxW(nullptr, L"找不到 contracts 目录，DeskKit 无法启动。", L"DeskKit", MB_OK);
+        MessageBoxW(nullptr, L"找不到 contracts 目录，DeskKit 无法启动。\n请把压缩包完整解压到一个文件夹，再双击里面的 deskkit.exe。不要在压缩包窗口里直接打开。", L"DeskKit", MB_OK | MB_ICONERROR);
         return 1;
     }
     std::string pinyin = *root + "\\..\\apps\\windows\\assets\\pinyin.txt";
@@ -567,10 +571,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     RegisterClassExW(&klass);
     // 这扇窗自己就是浮层：无标题栏、不进任务栏、置顶。不要再套一层 ImGui 标题栏。
     g_hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, klass.lpszClassName, L"DeskKit", WS_POPUP, 0, 0, 800, 480, nullptr, nullptr, instance, nullptr);
+    if (!g_hwnd) {
+        MessageBoxW(nullptr, L"窗口没有创建成功，DeskKit 无法显示。", L"DeskKit", MB_OK | MB_ICONERROR);
+        OleUninitialize();
+        return 1;
+    }
     shell.hostWindow = g_hwnd;
     SendMessageW(g_hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(klass.hIcon));
     SendMessageW(g_hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(klass.hIconSm));
-    if (!CreateDevice(g_hwnd)) return 1;
+    if (!CreateDevice(g_hwnd)) {
+        MessageBoxW(nullptr, L"窗口没有创建成功，所以看起来像没有运行。\n请在 64 位的 Windows 10 或 Windows 11 上运行，并更新显卡驱动后再试。", L"DeskKit", MB_OK | MB_ICONERROR);
+        DestroyWindow(g_hwnd);
+        OleUninitialize();
+        return 1;
+    }
     dk::BindIconDevice(g_device);
     if (SUCCEEDED(RegisterDragDrop(g_hwnd, &g_drop))) g_dropRegistered = true;
     else DragAcceptFiles(g_hwnd, TRUE);
@@ -592,7 +606,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     uint64_t clipboardTick = GetTickCount64();
     const std::wstring args = command ? command : L"";
     const bool show = args.find(L"--show") != std::wstring::npos;
+    // 开机自启带 --background，留在托盘里。用户双击 exe 时必须看见窗口，否则会以为没有运行。
+    const bool background = args.find(L"--background") != std::wstring::npos;
     if (!session.settings.guideDone || show) shell.ShowGuide();
+    else if (!background) session.Summon();
     if (show) session.Summon();
     dk::LogInfo("DeskKit 已启动");
 
