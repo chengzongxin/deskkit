@@ -489,7 +489,7 @@ void SyncPicker(Shell& shell);
 float Px(double dip);
 void ApplyTheme(const Shell& shell);
 bool LoadUiFont(float scale, float inputDip);
-void PresentHost(void* hwnd, Shell& shell);
+void PresentHost(void* hwnd, Shell& shell, bool reveal = true);
 void TickBlur(Shell& shell);
 
 struct HotkeySlot {

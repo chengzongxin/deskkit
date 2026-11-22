@@ -41,10 +41,40 @@ HWND g_hwnd = nullptr;
 dk::Shell* g_shell = nullptr;
 std::string GroupUnderPointer(const dk::Shell& shell);
 UINT g_tray = WM_APP + 1;
+void PaintFrame(bool wait) {
+    if (!g_shell || !g_swap || !g_target || !g_context) return;
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+    dk::DrawInterface(*g_shell);
+    ImGui::Render();
+    const float clear[4] = {0, 0, 0, 0};
+    g_context->OMSetRenderTargets(1, &g_target, nullptr);
+    g_context->ClearRenderTargetView(g_target, clear);
+    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    g_swap->Present(wait ? 1 : 0, 0);
+    if (g_dcomp) g_dcomp->Commit();
+}
+
+void RevealPrepared() {
+    // 交换链有两块缓冲。只画一帧就显示时，第一块还是空的，窗口会闪一下。
+    if (!g_hwnd || !g_shell || IsWindowVisible(g_hwnd)) return;
+    PaintFrame(false);
+    PaintFrame(false);
+    DwmFlush();
+    dk::PresentHost(g_hwnd, *g_shell, true);
+}
+
 void RaiseHost() {
-    // 先放到最终位置再显示。如果先在旧坐标露出来再挪过去，看起来就是抖一下。
+    // 热键消息还在处理时就要显示并抢到焦点。先在隐藏状态下画好最终尺寸，再露出来。
     if (!g_hwnd || !g_shell) return;
-    dk::PresentHost(g_hwnd, *g_shell);
+    const bool shown = IsWindowVisible(g_hwnd) != FALSE;
+    dk::PresentHost(g_hwnd, *g_shell, false);
+    if (!shown) RevealPrepared();
+    else {
+        PaintFrame(false);
+        dk::PresentHost(g_hwnd, *g_shell, true);
+    }
 }
 
 bool CreateRenderTarget() {
@@ -252,6 +282,7 @@ void RememberGroupFrame(HWND hwnd) {
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_ERASEBKGND) return 1;
     if (g_shell && g_shell->showGroups && msg == WM_NCHITTEST) {
         const LRESULT hit = GroupEdgeHit(hwnd, lParam);
         if (hit != HTCLIENT) return hit;
@@ -499,6 +530,8 @@ bool g_dropRegistered = false;
 }  // namespace
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
+    // 必须在创建窗口之前。否则系统按 96 DPI 画一整张图再放大，图标、照片和字会一起发虚。
+    ImGui_ImplWin32_EnableDpiAwareness();
     const wchar_t* command = GetCommandLineW();
     OleInitialize(nullptr);
     const auto root = dk::ContractStore::Locate();
@@ -602,6 +635,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     else DragAcceptFiles(g_hwnd, TRUE);
     const int corner = 2;
     DwmSetWindowAttribute(g_hwnd, 33, &corner, sizeof(corner));
+    // 关掉这个窗口自己的显示过渡。否则唤出时系统会从旧尺寸放大到新尺寸，看起来抖一下。
+    const BOOL noTransition = TRUE;
+    DwmSetWindowAttribute(g_hwnd, 3, &noTransition, sizeof(noTransition));
     AddTray();
 
     IMGUI_CHECKVERSION();
@@ -663,22 +699,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
                 session.NoteClipboard(snap.text, snap.files);
             }
         }
-        dk::PresentHost(g_hwnd, shell);
+        dk::PresentHost(g_hwnd, shell, false);
         const bool visible = shell.showLauncher || shell.showGroups || shell.showTools || shell.showSettings || shell.showGuide || shell.pickingColor;
         if (!visible) {
             Sleep(10);
             continue;
         }
-        ImGui_ImplDX11_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-        dk::DrawInterface(shell);
-        ImGui::Render();
-        const float clear[4] = {0, 0, 0, 0};
-        g_context->OMSetRenderTargets(1, &g_target, nullptr);
-        g_context->ClearRenderTargetView(g_target, clear);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        g_swap->Present(1, 0);
+        if (!IsWindowVisible(g_hwnd)) RevealPrepared();
+        else PaintFrame(true);
     }
 
     indexer.join();

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DeskKit LANGUAGES CXX RC)
+project(DeskKit LANGUAGES C CXX RC)
 
 # Windows 端按 Maye Nano 的方式：C++20 + Dear ImGui + DirectX 11。不嵌浏览器。
 set(CMAKE_CXX_STANDARD 20)
@@ -21,7 +21,17 @@ set(IMGUI_SRC
   ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
   ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
   ${IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+  ${IMGUI_DIR}/misc/freetype/imgui_freetype.cpp
 )
+
+# 字用 FreeType 光栅。系统里没有现成的库，源码放在 third_party，关掉用不到的压缩和解压依赖。
+set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/freetype-src ${CMAKE_BINARY_DIR}/freetype EXCLUDE_FROM_ALL)
 
 add_library(deskkit_core STATIC
   src/core.cpp
@@ -48,8 +58,8 @@ target_include_directories(deskkit PRIVATE
   ${IMGUI_DIR}/backends
   ${IMGUI_DIR}/misc/cpp
 )
-target_compile_definitions(deskkit PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_link_libraries(deskkit PRIVATE deskkit_core d3d11 dxgi d3dcompiler dwmapi dcomp windowscodecs)
+target_compile_definitions(deskkit PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN IMGUI_ENABLE_FREETYPE)
+target_link_libraries(deskkit PRIVATE deskkit_core freetype d3d11 dxgi d3dcompiler dwmapi dcomp windowscodecs)
 if(MINGW)
   # -static 会把 libgcc、libstdc++、libwinpthread 打进 exe。
   # 只写 -static-libgcc 时，别的电脑没有 MinGW 的 libwinpthread-1.dll，启动就会失败。

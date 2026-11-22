@@ -4,6 +4,7 @@
 #include "imgui_stdlib.h"
 
 #include <windows.h>
+#include <dwmapi.h>
 #include <shlobj.h>
 #include <commdlg.h>
 
@@ -12,6 +13,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 
 namespace dk {
@@ -67,7 +69,8 @@ void ApplyTheme(const Shell& shell) {
 bool LoadUiFont(float scale, float inputDip) {
     g_scale = scale < 1.f ? 1.f : scale;
     ImGuiIO& io = ImGui::GetIO();
-    // msyh.ttc 第 0 面是微软雅黑，第 1 面是微软雅黑 UI，和原来 WPF 的 FontFamily 一致。
+    io.Fonts->FontLoaderFlags = 0;
+    // msyh.ttc 第 0 面是微软雅黑常规体，第 1 面是微软雅黑 UI。
     const char* fonts[] = {"C:\\Windows\\Fonts\\msyh.ttc", "C:\\Windows\\Fonts\\msyh.ttf", "C:\\Windows\\Fonts\\segoeui.ttf", "C:\\Windows\\Fonts\\simhei.ttf"};
     const ImWchar* ranges = io.Fonts->GetGlyphRangesChineseSimplifiedCommon();
     for (const char* font : fonts) {
@@ -75,10 +78,9 @@ bool LoadUiFont(float scale, float inputDip) {
         auto add = [&](float size, int face) -> ImFont* {
             ImFontConfig config;
             config.FontNo = face;
-            config.PixelSnapH = false;
+            config.PixelSnapH = true;
             return io.Fonts->AddFontFromFileTTF(font, size * g_scale, &config, ranges);
         };
-        // 微软雅黑（第 0 面）比雅黑 UI 更醒目。字号比契约大一档，避免界面字看起来偏小。
         int face = 0;
         ImFont* body = add(16.f, face);
         if (!body) {
@@ -99,9 +101,36 @@ bool LoadUiFont(float scale, float inputDip) {
     return false;
 }
 
-void PresentHost(void* raw, Shell& shell) {
+float ScaleAt(POINT point) {
+    // 用目标屏幕的缩放，不用窗口此刻所在的屏幕。窗口还停在旧位置时，按旧缩放算出来会偏小，露出来后再放大。
+    HMONITOR monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+    using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, int, UINT*, UINT*);
+    static GetDpiForMonitorFn getDpi = [] {
+        HMODULE module = GetModuleHandleW(L"shcore.dll");
+        if (!module) module = LoadLibraryW(L"shcore.dll");
+        FARPROC raw = module ? GetProcAddress(module, "GetDpiForMonitor") : nullptr;
+        GetDpiForMonitorFn fn = nullptr;
+        if (raw) std::memcpy(&fn, &raw, sizeof(fn));
+        return fn;
+    }();
+    UINT dpiX = 96;
+    UINT dpiY = 96;
+    if (getDpi && SUCCEEDED(getDpi(monitor, 0, &dpiX, &dpiY)) && dpiX >= 48) return dpiX / 96.f;
+    return 1.f;
+}
+
+void PresentHost(void* raw, Shell& shell, bool reveal) {
     HWND hwnd = static_cast<HWND>(raw);
-    const float dpi = GetDpiForWindow(hwnd) / 96.f;
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    POINT dpiPoint = cursor;
+    if (shell.session->settings.multiScreen == "main") {
+        const MonitorBox primary = PrimaryMonitor();
+        dpiPoint = POINT{primary.x + primary.w / 2, primary.y + primary.h / 2};
+    } else if (shell.showGroups && shell.session->settings.panelPlacedByUser) {
+        dpiPoint = POINT{static_cast<int>(std::lround(shell.session->settings.panelX * g_scale)), static_cast<int>(std::lround(shell.session->settings.panelY * g_scale))};
+    }
+    const float dpi = ScaleAt(dpiPoint);
     if (dpi > 0.5f) g_scale = dpi;
     SyncPicker(shell);
     const bool visible = shell.showLauncher || shell.showGroups || shell.showTools || shell.showSettings || shell.showGuide || shell.pickingColor;
@@ -187,14 +216,27 @@ void PresentHost(void* raw, Shell& shell) {
     const int w = width + shadow * 2;
     const int h = height + shadow * 2;
     // 位置和大小没变就不要再 SetWindowPos。每帧都改置顶，合成器会把窗口抖一下。
-    if (!IsWindowVisible(hwnd) || x != placedX || y != placedY || w != placedW || h != placedH) {
-        SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+    // 隐藏时只改尺寸，不在这里显示。调用方先把新尺寸的画面画进交换链，再带 reveal 显示。
+    // 第一次快捷启动比窗口创建时大，边显示边画会把旧画面拉大，看起来闪一下。
+    const bool wasVisible = IsWindowVisible(hwnd) != FALSE;
+    if (!wasVisible) {
+        SetWindowPos(hwnd, nullptr, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+        placedX = x;
+        placedY = y;
+        placedW = w;
+        placedH = h;
+        if (!reveal) return;
+        const BOOL noTransition = TRUE;
+        DwmSetWindowAttribute(hwnd, 3, &noTransition, sizeof(noTransition));
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOREDRAW | SWP_NOCOPYBITS);
+    } else if (x != placedX || y != placedY || w != placedW || h != placedH) {
+        SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_NOCOPYBITS);
         placedX = x;
         placedY = y;
         placedW = w;
         placedH = h;
     }
-    if (!shell.wantFocus) return;
+    if (!reveal || !shell.wantFocus) return;
     shell.wantFocus = false;
     if (GetForegroundWindow() == hwnd) return;
     const HWND foreground = GetForegroundWindow();

@@ -10,6 +10,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <commdlg.h>
 #include <d3d11.h>
 #include <wincodec.h>
@@ -37,9 +38,12 @@ namespace {
 ID3D11Device* g_device = nullptr;
 std::unordered_map<std::string, ImTextureID> g_icons;
 std::string g_backgroundPath;
+std::vector<uint8_t> g_backgroundPixels;
 ImTextureID g_background = 0;
 int g_backgroundW = 0;
 int g_backgroundH = 0;
+int g_backgroundViewW = 0;
+int g_backgroundViewH = 0;
 Shell* g_pick = nullptr;
 HHOOK g_pickMouse = nullptr;
 HHOOK g_pickKey = nullptr;
@@ -121,8 +125,61 @@ const char* KindLabel(const std::string& kind) {
     return "";
 }
 
-ImTextureID UploadBgra(const uint8_t* pixels, int width, int height) {
+int MipCount(int width, int height) {
+    int levels = 1;
+    while (width > 1 || height > 1) {
+        width = std::max(1, width / 2);
+        height = std::max(1, height / 2);
+        ++levels;
+    }
+    return levels;
+}
+
+void StraightenAlpha(uint8_t* pixels, int width, int height) {
+    // 很多程序图标画进 32 位位图后颜色有了，透明通道却是 0，按纹理去画就会整张消失。
+    auto* words = reinterpret_cast<uint32_t*>(pixels);
+    const int count = width * height;
+    bool anyAlpha = false;
+    for (int i = 0; i < count; ++i) {
+        if ((words[i] >> 24) != 0) {
+            anyAlpha = true;
+            break;
+        }
+    }
+    if (anyAlpha) return;
+    for (int i = 0; i < count; ++i) {
+        if ((words[i] & 0x00FFFFFFu) != 0) words[i] |= 0xFF000000u;
+    }
+}
+
+ImTextureID UploadBgra(const uint8_t* pixels, int width, int height, bool mipmaps) {
     if (!g_device || !pixels || width <= 0 || height <= 0) return 0;
+    if (mipmaps) {
+        // 背景图比窗口大。没有中间尺寸时，显卡缩小只看旁边 4 个像素，细线会变成锯齿。
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = static_cast<UINT>(width);
+        desc.Height = static_cast<UINT>(height);
+        desc.MipLevels = static_cast<UINT>(MipCount(width, height));
+        desc.ArraySize = 1;
+        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+        ID3D11Texture2D* texture = nullptr;
+        if (SUCCEEDED(g_device->CreateTexture2D(&desc, nullptr, &texture))) {
+            ID3D11DeviceContext* context = nullptr;
+            g_device->GetImmediateContext(&context);
+            ID3D11ShaderResourceView* view = nullptr;
+            if (context) {
+                context->UpdateSubresource(texture, 0, nullptr, pixels, static_cast<UINT>(width * 4), 0);
+                if (SUCCEEDED(g_device->CreateShaderResourceView(texture, nullptr, &view)) && view) context->GenerateMips(view);
+                context->Release();
+            }
+            texture->Release();
+            if (view) return static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(view));
+        }
+    }
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = static_cast<UINT>(width);
     desc.Height = static_cast<UINT>(height);
@@ -158,22 +215,8 @@ ImTextureID TextureFromIcon(HICON icon, int size) {
     HBITMAP dib = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
     const HGDIOBJ previous = SelectObject(memory, dib);
     DrawIconEx(memory, 0, 0, icon, size, size, 0, nullptr, DI_NORMAL);
-    // 很多程序图标画进 32 位位图后颜色有了，透明通道却是 0，按纹理去画就会整张消失。
-    auto* pixels = static_cast<uint32_t*>(bits);
-    bool anyAlpha = false;
-    const int count = size * size;
-    for (int i = 0; i < count; ++i) {
-        if ((pixels[i] >> 24) != 0) {
-            anyAlpha = true;
-            break;
-        }
-    }
-    if (!anyAlpha) {
-        for (int i = 0; i < count; ++i) {
-            if ((pixels[i] & 0x00FFFFFFu) != 0) pixels[i] |= 0xFF000000u;
-        }
-    }
-    ImTextureID texture = UploadBgra(static_cast<uint8_t*>(bits), size, size);
+    StraightenAlpha(static_cast<uint8_t*>(bits), size, size);
+    ImTextureID texture = UploadBgra(static_cast<uint8_t*>(bits), size, size, false);
     SelectObject(memory, previous);
     DeleteObject(dib);
     DeleteDC(memory);
@@ -181,81 +224,183 @@ ImTextureID TextureFromIcon(HICON icon, int size) {
     return texture;
 }
 
-ImTextureID FileIcon(const std::string& path, int size) {
+bool PixelsFromBitmap(HBITMAP bitmap, std::vector<uint8_t>& pixels, int& width, int& height) {
+    BITMAP info{};
+    if (!bitmap || !GetObject(bitmap, sizeof(info), &info) || info.bmWidth <= 0 || info.bmHeight == 0) return false;
+    width = info.bmWidth;
+    height = std::abs(info.bmHeight);
+    BITMAPINFO header{};
+    header.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    header.bmiHeader.biWidth = width;
+    header.bmiHeader.biHeight = -height;
+    header.bmiHeader.biPlanes = 1;
+    header.bmiHeader.biBitCount = 32;
+    header.bmiHeader.biCompression = BI_RGB;
+    pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+    HDC screen = GetDC(nullptr);
+    const int rows = GetDIBits(screen, bitmap, 0, static_cast<UINT>(height), pixels.data(), &header, DIB_RGB_COLORS);
+    ReleaseDC(nullptr, screen);
+    if (rows <= 0) return false;
+    StraightenAlpha(pixels.data(), width, height);
+    return true;
+}
+
+ImTextureID IconFromShell(const std::wstring& path, int tex) {
+    // 向系统要一张比屏幕上更大的图标，再缩回去。32 像素那一档的斜边是台阶。
+    IShellItem* item = nullptr;
+    if (FAILED(SHCreateItemFromParsingName(path.c_str(), nullptr, IID_PPV_ARGS(&item))) || !item) return 0;
+    IShellItemImageFactory* factory = nullptr;
+    item->QueryInterface(IID_PPV_ARGS(&factory));
+    item->Release();
+    if (!factory) return 0;
+    HBITMAP bitmap = nullptr;
+    const SIZE want{tex, tex};
+    const HRESULT got = factory->GetImage(want, SIIGBF_ICONONLY | SIIGBF_RESIZETOFIT, &bitmap);
+    factory->Release();
+    if (FAILED(got) || !bitmap) return 0;
+    std::vector<uint8_t> pixels;
+    int width = 0;
+    int height = 0;
+    const bool ok = PixelsFromBitmap(bitmap, pixels, width, height);
+    DeleteObject(bitmap);
+    if (!ok) return 0;
+    return UploadBgra(pixels.data(), width, height, false);
+}
+
+ImTextureID FileIcon(const std::string& path, int dip) {
     if (!g_device || path.empty()) return 0;
-    const std::string key = path + "#" + std::to_string(size);
+    const int display = std::max(16, static_cast<int>(std::lround(Px(dip))));
+    const int tex = std::min(256, display * 2);
+    const std::string key = path + "#" + std::to_string(tex);
     if (const auto found = g_icons.find(key); found != g_icons.end()) return found->second;
     const std::wstring wide = Wide(path);
-    HICON icon = nullptr;
-    std::string ext;
-    const auto dot = path.find_last_of('.');
-    if (dot != std::string::npos) {
-        ext = path.substr(dot);
-        for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    // 应用和快捷方式用目标程序自己的图标。系统图像列表经常只给一个看不清的通用图标。
-    if (ext == ".exe" || ext == ".lnk" || ext == ".ico") {
-        HICON small = nullptr;
-        if (ExtractIconExW(wide.c_str(), 0, &icon, &small, 1) > 0 && !icon) icon = small;
-        else if (small && small != icon) DestroyIcon(small);
-    }
-    SHFILEINFOW info{};
-    if (!icon) {
-        const DWORD attributes = GetFileAttributesW(wide.c_str());
-        const bool directory = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
-        DWORD flags = SHGFI_ICON | SHGFI_LARGEICON;
-        if (!SHGetFileInfoW(wide.c_str(), directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), flags) || !info.hIcon) {
-            flags |= SHGFI_USEFILEATTRIBUTES;
-            SHGetFileInfoW(directory ? L"folder" : L"file.bin", directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), flags);
+    ImTextureID texture = IconFromShell(wide, tex);
+    if (!texture) {
+        HICON icon = nullptr;
+        if (FAILED(SHDefExtractIconW(wide.c_str(), 0, 0, &icon, nullptr, static_cast<UINT>(tex))) || !icon) {
+            SHFILEINFOW info{};
+            const DWORD attributes = GetFileAttributesW(wide.c_str());
+            const bool directory = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY);
+            DWORD flags = SHGFI_ICON | SHGFI_LARGEICON;
+            if (!SHGetFileInfoW(wide.c_str(), directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), flags) || !info.hIcon) {
+                flags |= SHGFI_USEFILEATTRIBUTES;
+                SHGetFileInfoW(directory ? L"folder" : L"file.bin", directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL, &info, sizeof(info), flags);
+            }
+            icon = info.hIcon;
         }
-        icon = info.hIcon;
+        texture = TextureFromIcon(icon, tex);
+        if (icon) DestroyIcon(icon);
     }
-    const ImTextureID texture = TextureFromIcon(icon, size);
-    if (icon) DestroyIcon(icon);
     g_icons[key] = texture;
     return texture;
 }
 
-ImTextureID BackgroundImage(const Shell& shell) {
-    const std::string& path = shell.session->settings.backgroundImagePath;
-    if (path.empty() || !g_device) return 0;
-    if (path == g_backgroundPath) return g_background;
-    g_backgroundPath = path;
-    g_background = 0;
+void ReleaseTexture(ImTextureID texture) {
+    if (!texture) return;
+    reinterpret_cast<IUnknown*>(static_cast<uintptr_t>(texture))->Release();
+}
+
+void CoverRect(int imageW, int imageH, int viewW, int viewH, int& x, int& y, int& w, int& h) {
+    const double imageAspect = static_cast<double>(imageW) / static_cast<double>(imageH);
+    const double viewAspect = static_cast<double>(viewW) / static_cast<double>(viewH);
+    if (imageAspect > viewAspect) {
+        h = imageH;
+        w = std::max(1, static_cast<int>(std::lround(imageH * viewAspect)));
+        w = std::min(w, imageW);
+        x = std::max(0, (imageW - w) / 2);
+        y = 0;
+        return;
+    }
+    w = imageW;
+    h = std::max(1, static_cast<int>(std::lround(imageW / viewAspect)));
+    h = std::min(h, imageH);
+    x = 0;
+    y = std::max(0, (imageH - h) / 2);
+}
+
+bool LoadBackgroundPixels(const std::string& path) {
+    g_backgroundPixels.clear();
     g_backgroundW = 0;
     g_backgroundH = 0;
     IWICImagingFactory* factory = nullptr;
-    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return 0;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return false;
     IWICBitmapDecoder* decoder = nullptr;
     IWICBitmapFrameDecode* frame = nullptr;
     IWICFormatConverter* converter = nullptr;
+    bool ok = false;
     if (SUCCEEDED(factory->CreateDecoderFromFilename(Wide(path).c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &decoder)) && SUCCEEDED(decoder->GetFrame(0, &frame)) && SUCCEEDED(factory->CreateFormatConverter(&converter)) && SUCCEEDED(converter->Initialize(frame, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom))) {
         UINT width = 0;
         UINT height = 0;
         converter->GetSize(&width, &height);
         if (width > 0 && height > 0 && width < 8000 && height < 8000) {
-            std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
-            if (SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data()))) {
-                g_background = UploadBgra(pixels.data(), static_cast<int>(width), static_cast<int>(height));
+            g_backgroundPixels.resize(static_cast<size_t>(width) * height * 4);
+            if (SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(g_backgroundPixels.size()), g_backgroundPixels.data()))) {
                 g_backgroundW = static_cast<int>(width);
                 g_backgroundH = static_cast<int>(height);
+                ok = true;
             }
         }
     }
+    if (!ok) g_backgroundPixels.clear();
     if (converter) converter->Release();
     if (frame) frame->Release();
     if (decoder) decoder->Release();
     factory->Release();
+    return ok;
+}
+
+bool ScaleBackground(int viewW, int viewH, std::vector<uint8_t>& scaled) {
+    // 显卡采样被限制在原图最细的一层，缩小后细线会裂开。先按窗口像素缩好，再原样贴上去。
+    IWICImagingFactory* factory = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return false;
+    IWICBitmap* bitmap = nullptr;
+    IWICBitmapClipper* clipper = nullptr;
+    IWICBitmapScaler* scaler = nullptr;
+    int cropX = 0;
+    int cropY = 0;
+    int cropW = 0;
+    int cropH = 0;
+    CoverRect(g_backgroundW, g_backgroundH, viewW, viewH, cropX, cropY, cropW, cropH);
+    const WICRect crop{cropX, cropY, cropW, cropH};
+    bool ok = false;
+    if (SUCCEEDED(factory->CreateBitmapFromMemory(static_cast<UINT>(g_backgroundW), static_cast<UINT>(g_backgroundH), GUID_WICPixelFormat32bppBGRA, static_cast<UINT>(g_backgroundW * 4), static_cast<UINT>(g_backgroundPixels.size()), g_backgroundPixels.data(), &bitmap)) && SUCCEEDED(factory->CreateBitmapClipper(&clipper)) && SUCCEEDED(clipper->Initialize(bitmap, &crop)) && SUCCEEDED(factory->CreateBitmapScaler(&scaler)) && SUCCEEDED(scaler->Initialize(clipper, static_cast<UINT>(viewW), static_cast<UINT>(viewH), WICBitmapInterpolationModeFant))) {
+        scaled.resize(static_cast<size_t>(viewW) * static_cast<size_t>(viewH) * 4);
+        ok = SUCCEEDED(scaler->CopyPixels(nullptr, static_cast<UINT>(viewW * 4), static_cast<UINT>(scaled.size()), scaled.data()));
+    }
+    if (scaler) scaler->Release();
+    if (clipper) clipper->Release();
+    if (bitmap) bitmap->Release();
+    factory->Release();
+    return ok;
+}
+
+ImTextureID BackgroundImage(const Shell& shell, int viewW, int viewH) {
+    const std::string& path = shell.session->settings.backgroundImagePath;
+    if (path.empty() || !g_device || viewW < 2 || viewH < 2) return 0;
+    if (path != g_backgroundPath) {
+        g_backgroundPath = path;
+        ReleaseTexture(g_background);
+        g_background = 0;
+        g_backgroundViewW = 0;
+        g_backgroundViewH = 0;
+        LoadBackgroundPixels(path);
+    }
+    if (g_backgroundPixels.empty()) return 0;
+    if (g_background && g_backgroundViewW == viewW && g_backgroundViewH == viewH) return g_background;
+    std::vector<uint8_t> scaled;
+    if (!ScaleBackground(viewW, viewH, scaled)) return g_background;
+    ReleaseTexture(g_background);
+    g_background = UploadBgra(scaled.data(), viewW, viewH, false);
+    g_backgroundViewW = viewW;
+    g_backgroundViewH = viewH;
     return g_background;
 }
 
-void DrawGlyph(const char* glyph, ImU32 color, ImVec2 center, float size) {
-    if (!g_iconFont) return;
-    ImGui::PushFont(g_iconFont);
-    const ImVec2 text = ImGui::CalcTextSize(glyph);
-    ImGui::GetWindowDrawList()->AddText(ImVec2(center.x - text.x * 0.5f, center.y - text.y * 0.5f), color, glyph);
-    ImGui::PopFont();
-    (void)size;
+void DrawGlyph(const char* glyph, ImU32 color, ImVec2 center, float dip) {
+    if (!g_iconFont || !glyph) return;
+    const float pixel = Px(dip);
+    const ImVec2 text = g_iconFont->CalcTextSizeA(pixel, FLT_MAX, 0.f, glyph);
+    ImGui::GetWindowDrawList()->AddText(g_iconFont, pixel, ImVec2(center.x - text.x * 0.5f, center.y - text.y * 0.5f), color, glyph);
 }
 
 bool ChevronButton(const Shell& shell, const char* id, bool folded) {
@@ -887,29 +1032,13 @@ void PaintChrome(const Shell& shell) {
     const float radius = Px(shell.session->store.Layout({"radius", "float"}));
     const float alpha = static_cast<float>(std::clamp(shell.session->settings.backgroundOpacity, 0.15, 1.0));
     const char* fill = shell.showSettings || shell.showGuide || shell.showGroups ? "bg.canvas" : "bg.float";
-    if (const ImTextureID image = BackgroundImage(shell)) {
-        // 按比例铺满，多出来的边裁掉。直接拉到窗口大小会把图拉变形。
-        ImVec2 uv0(0, 0);
-        ImVec2 uv1(1, 1);
-        const float viewW = end.x - origin.x;
-        const float viewH = end.y - origin.y;
-        if (g_backgroundW > 0 && g_backgroundH > 0 && viewW > 1.f && viewH > 1.f) {
-            const float imageAspect = static_cast<float>(g_backgroundW) / static_cast<float>(g_backgroundH);
-            const float viewAspect = viewW / viewH;
-            if (imageAspect > viewAspect) {
-                const float visible = viewAspect / imageAspect;
-                const float crop = (1.f - visible) * 0.5f;
-                uv0.x = crop;
-                uv1.x = 1.f - crop;
-            } else {
-                const float visible = imageAspect / viewAspect;
-                const float crop = (1.f - visible) * 0.5f;
-                uv0.y = crop;
-                uv1.y = 1.f - crop;
-            }
-        }
-        draw->AddImageRounded(image, origin, end, uv0, uv1, IM_COL32(255, 255, 255, static_cast<int>(alpha * 255)), radius);
-        draw->AddRectFilled(origin, end, PaintU(shell, fill, 0.55f), radius);
+    const int viewW = std::max(1, static_cast<int>(std::lround(end.x - origin.x)));
+    const int viewH = std::max(1, static_cast<int>(std::lround(end.y - origin.y)));
+    if (const ImTextureID image = BackgroundImage(shell, viewW, viewH)) {
+        // 底色垫在图下面。透明度拉低时露出底色，不再在图上另盖一层深色。
+        // 图已经按窗口大小裁好缩好，铺满即可，不用再在显卡上硬缩。
+        draw->AddRectFilled(origin, end, PaintU(shell, fill, 1.f), radius);
+        draw->AddImageRounded(image, origin, end, ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, static_cast<int>(alpha * 255)), radius);
     } else {
         draw->AddRectFilled(origin, end, PaintU(shell, fill, alpha), radius);
     }
@@ -1452,6 +1581,9 @@ void DrawGroups(Shell& shell) {
 
     ImGui::BeginChild("grid", ImVec2(0, 0), false);
     const float cell = Px(session.store.Layout({"cell", "shortcut"}));
+    // 每一行都从这里起排。只缩进第一行的话，换行后光标会回到窗口最左边，下面几行就和第一行错开。
+    const float gridLeft = Px(16);
+    const float gridRight = Px(16);
     shell.hoverGroup.clear();
     shell.groupHits.clear();
     bool focusEmpty = false;
@@ -1495,7 +1627,7 @@ void DrawGroups(Shell& shell) {
         if (!plain) {
             if (ImGui::GetCursorPosY() < Px(4)) ImGui::Dummy(ImVec2(0, Px(8)));
             const float titleTop = ImGui::GetCursorPosY();
-            ImGui::SetCursorPosX(Px(16));
+            ImGui::SetCursorPosX(gridLeft);
             const ImVec2 bar = ImGui::GetCursorScreenPos();
             ImGui::GetWindowDrawList()->AddRectFilled(bar, ImVec2(bar.x + Px(3), bar.y + ImGui::GetFontSize()), ImGui::ColorConvertFloat4ToU32(Hex(group.color)), Px(2));
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Px(8));
@@ -1504,16 +1636,17 @@ void DrawGroups(Shell& shell) {
             const float titleBand = std::max(ImGui::GetTextLineHeight(), chevron);
             ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - Px(20) - chevron, titleTop + (titleBand - chevron) * 0.5f));
             if (ChevronButton(shell, "fold", folded)) ToggleFold(shell, group.id);
-            if (!folded) ImGui::SetCursorPos(ImVec2(Px(16), titleTop + titleBand + Px(4)));
+            if (!folded) ImGui::SetCursorPos(ImVec2(gridLeft, titleTop + titleBand + Px(4)));
         } else {
-            ImGui::SetCursorPos(ImVec2(Px(12), Px(12)));
+            ImGui::SetCursorPos(ImVec2(gridLeft, Px(12)));
         }
         if (!folded) {
             if (group.itemIds.empty() && !shell.groupsEditing) {
                 ImGui::TextDisabled("%s", session.store.Text("empty.panelStack").c_str());
             }
             int shown = 0;
-            const float inner = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+            const float contentW = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+            const float inner = std::max(cell, contentW - gridLeft - gridRight);
             const float baseGap = Px(8);
             const int columns = std::max(1, static_cast<int>((inner + baseGap) / (cell + baseGap)));
             float gap = baseGap;
@@ -1533,6 +1666,7 @@ void DrawGroups(Shell& shell) {
                 const std::string shortcutTitle = shortcut->title;
                 const std::string groupId = group.id;
                 if (shown % columns != 0) ImGui::SameLine(0, gap);
+                else ImGui::SetCursorPosX(gridLeft);
                 ImGui::PushID(shortcutId.c_str());
                 ImGui::BeginChild("cell", ImVec2(cell, cell), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
                 const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -1641,22 +1775,29 @@ void DrawGroups(Shell& shell) {
                 ImGui::PopStyleVar(3);
                 ImDrawList* draw = ImGui::GetWindowDrawList();
                 if (ImGui::IsItemHovered() && !pressOnBadge) draw->AddRectFilled(origin, ImVec2(origin.x + cell, origin.y + cell), PaintU(shell, "bg.hover"), Px(8));
-                const ImVec2 iconMin(origin.x + cell * 0.5f - Px(16), origin.y + Px(8));
-                const ImVec2 iconMax(origin.x + cell * 0.5f + Px(16), origin.y + Px(40));
-                if (const ImTextureID texture = FileIcon(shortcutPath, 32)) {
+                const float icon = Px(session.store.Layout({"cell", "icon"}));
+                const float labelPx = std::max(1.f, Px(session.store.Layout({"type", "cellLabel", "size"})));
+                const float textGap = Px(4);
+                ImFont* labelFont = g_smallFont ? g_smallFont : ImGui::GetFont();
+                if (g_smallFont) ImGui::PushFont(g_smallFont);
+                const std::string label = FitText(shortcutTitle, cell - Px(8));
+                if (g_smallFont) ImGui::PopFont();
+                const ImVec2 labelSize = labelFont->CalcTextSizeA(labelPx, FLT_MAX, 0.f, label.c_str());
+                const float block = icon + textGap + labelSize.y;
+                const float top = std::max(Px(4.f), (cell - block) * 0.5f);
+                const ImVec2 iconMin(origin.x + (cell - icon) * 0.5f, origin.y + top);
+                const ImVec2 iconMax(iconMin.x + icon, iconMin.y + icon);
+                const int iconDip = std::max(16, static_cast<int>(std::lround(session.store.Layout({"cell", "icon"}))));
+                if (const ImTextureID texture = FileIcon(shortcutPath, iconDip)) {
                     if (wobble == 0.f) draw->AddImage(texture, iconMin, iconMax);
                     else draw->AddImageQuad(texture, RotatePoint(iconMin, pivot, wobble), RotatePoint(ImVec2(iconMax.x, iconMin.y), pivot, wobble), RotatePoint(iconMax, pivot, wobble), RotatePoint(ImVec2(iconMin.x, iconMax.y), pivot, wobble));
                 } else {
-                    const ImVec2 glyph = wobble == 0.f ? ImVec2(origin.x + cell * 0.5f, origin.y + Px(24)) : RotatePoint(ImVec2(origin.x + cell * 0.5f, origin.y + Px(24)), pivot, wobble);
-                    DrawGlyph(shortcutKind == "url" ? ToolGlyph("link") : ToolGlyph("app"), PaintU(shell, "accent"), glyph, 18);
+                    const ImVec2 glyph((iconMin.x + iconMax.x) * 0.5f, (iconMin.y + iconMax.y) * 0.5f);
+                    DrawGlyph(shortcutKind == "url" ? ToolGlyph("link") : ToolGlyph("app"), PaintU(shell, "accent"), wobble == 0.f ? glyph : RotatePoint(glyph, pivot, wobble), static_cast<float>(iconDip) * 0.55f);
                 }
-                if (g_smallFont) ImGui::PushFont(g_smallFont);
-                const std::string label = FitText(shortcutTitle, cell - Px(8));
-                const ImVec2 labelSize = ImGui::CalcTextSize(label.c_str());
-                ImVec2 labelPos(origin.x + (cell - labelSize.x) * 0.5f, origin.y + cell - labelSize.y - Px(6));
+                ImVec2 labelPos(origin.x + (cell - labelSize.x) * 0.5f, iconMax.y + textGap);
                 if (wobble != 0.f) labelPos = RotatePoint(labelPos + labelSize * 0.5f, pivot, wobble) - labelSize * 0.5f;
-                draw->AddText(labelPos, PaintU(shell, "text.secondary"), label.c_str());
-                if (g_smallFont) ImGui::PopFont();
+                draw->AddText(labelFont, labelPx, labelPos, PaintU(shell, "text.primary"), label.c_str());
                 if (shell.groupsEditing) {
                     draw->AddRectFilled(badgePos, badgeEnd, PaintU(shell, "bg.float"), Px(4));
                     draw->AddRect(badgePos, badgeEnd, PaintU(shell, "border.strong"), Px(4), 0, 1.f);
@@ -1677,6 +1818,7 @@ void DrawGroups(Shell& shell) {
             ImGui::PopStyleVar();
             if (shell.groupsEditing) {
                 if (shown % columns != 0) ImGui::SameLine(0, gap);
+                else ImGui::SetCursorPosX(gridLeft);
                 ImGui::BeginChild("add-cell", ImVec2(cell, cell), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
                 const ImVec2 origin = ImGui::GetCursorScreenPos();
                 if (ImGui::InvisibleButton("##add-cell", ImVec2(cell, cell))) AddFiles(shell);
@@ -2128,7 +2270,7 @@ void DrawSettings(Shell& shell) {
         EndCard();
     } else {
         BeginCard(shell, "version", "");
-        BeginRow("DeskKit 0.9.6", "Windows 版是 C++ / ImGui 便携包，解压后双击即可打开窗口。");
+        BeginRow("DeskKit 0.9.7", "Windows 版是 C++ / ImGui 便携包，解压后双击即可打开窗口。");
         ImGui::Text("当前版本");
         EndCard();
         std::string diffs;
@@ -2141,7 +2283,7 @@ void DrawSettings(Shell& shell) {
         ImGui::Text("来自契约");
         EndCard();
         BeginCard(shell, "notes", "更新日志");
-        BeginRow("0.9.6", "快捷启动和搜索浮层去掉深色底和分隔线，背景图按原比例铺开。");
+        BeginRow("0.9.7", "唤出不再先小后大，背景按窗口缩小以免锯齿，快捷项图标加大、名字贴近图标。");
         ImGui::Text("当前版本");
         EndCard();
         BeginCard(shell, "permissions", "Windows 系统能力");
@@ -2163,7 +2305,7 @@ void DrawSettings(Shell& shell) {
         ImGui::SameLine();
         if (SoftButton(shell, "export-about", "导出")) ExportData(shell);
         BeginRow("检查更新", session.settings.autoUpdate ? "已开启启动检查。现在可以手动查一次" : "自动检查已关闭，仍可手动查看版本");
-        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.6，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.6。", L"检查更新", MB_OK);
+        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.7，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.7。", L"检查更新", MB_OK);
         BeginRow("重新走引导", "三步引导可以再看一遍");
         if (SoftButton(shell, "reguide", "重新引导")) {
             session.settings.guideDone = false;
