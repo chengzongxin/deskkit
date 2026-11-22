@@ -306,7 +306,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         launcherRoot.frame = root.bounds
         root.addSubview(launcherRoot)
 
-        let inputRow: CGFloat = 64
+        let inputRow = session.store.layout("launcher", "inputRowHeight")
         func mid(_ height: CGFloat) -> CGFloat { floor((inputRow - height) / 2) }
 
         searchIcon.image = AppIcons.symbol("magnifyingglass", size: 16, tint: color("text.tertiary"))
@@ -362,12 +362,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         close.frame = NSRect(x: 572, y: mid(28), width: 28, height: 28)
         launcherRoot.addSubview(close)
 
-        let divider = NSView(frame: NSRect(x: 0, y: 63, width: width, height: 1))
-        divider.wantsLayer = true
-        divider.layer?.backgroundColor = color("border.default").cgColor
-        divider.identifier = NSUserInterfaceItemIdentifier("chrome-divider")
-        launcherRoot.addSubview(divider)
-
         bodyScroll.drawsBackground = false
         bodyScroll.hasVerticalScroller = true
         bodyScroll.autohidesScrollers = true
@@ -378,7 +372,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         bodyScroll.clipsToBounds = true
         bodyScroll.contentView.clipsToBounds = true
         bodyScroll.documentView = body
-        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 72))
+        bodyScroll.frame = NSRect(x: 0, y: inputRow, width: width, height: max(1, height - inputRow - 8))
         launcherRoot.addSubview(bodyScroll)
         launcherRoot.clipsToBounds = true
 
@@ -455,7 +449,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let minH: CGFloat = home
             ? session.store.layout("launcher", "defaultHeight")
             : (empty ? session.store.layout("launcher", "emptyHeight") : 220)
-        let height = min(session.store.layout("launcher", "maxHeight"), max(minH, 64 + contentH + 8))
+        let inputRow = session.store.layout("launcher", "inputRowHeight")
+        let height = min(session.store.layout("launcher", "maxHeight"), max(minH, inputRow + contentH + 8))
 
         var frame = launcher.frame
         let top = frame.maxY
@@ -464,7 +459,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         launcher.setFrame(frame, display: true)
         launcherRoot.frame = NSRect(x: 0, y: 0, width: width, height: height)
         body.frame = NSRect(x: 0, y: 0, width: width, height: max(contentH, 1))
-        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 72))
+        bodyScroll.frame = NSRect(x: 0, y: inputRow, width: width, height: max(1, height - inputRow - 8))
         bodyScroll.scrollerInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 10)
         let viewport = bodyScroll.frame.height
         let scrollKey = session.query + "|" + session.triggerWord
@@ -476,10 +471,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             }
         }
         footerBar.isHidden = true
-        if let divider = launcherRoot.subviews.first(where: { $0.identifier?.rawValue == "chrome-divider" }) {
-            divider.frame = NSRect(x: 0, y: 63, width: width, height: 1)
-            divider.layer?.backgroundColor = color("border.default").cgColor
-        }
         applyBackground(to: launcher.contentView)
         if launcher.isVisible, launcher.isKeyWindow {
             let editing = launcher.firstResponder === field || launcher.firstResponder === field.currentEditor()
@@ -739,7 +730,9 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let row = HitRow(frame: NSRect(x: layout.pad, y: y, width: layout.rowW, height: rowHeight))
         row.swallowsClicks = true
         row.wantsLayer = true
-        row.layer?.backgroundColor = (selected ? color("bg.selected") : NSColor.clear).cgColor
+        let selectedFill = color("accent").withAlphaComponent(0.16)
+        let hoverFill = color("bg.hover").withAlphaComponent(0.45)
+        row.layer?.backgroundColor = (selected ? selectedFill : NSColor.clear).cgColor
         row.layer?.cornerRadius = 8
         if selected {
             let bar = NSView(frame: NSRect(x: 0, y: 0, width: 3, height: rowHeight))
@@ -868,7 +861,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let footerH: CGFloat = 0
         let edge = uiEdge()
         let header = WindowDragView(frame: NSRect(x: 0, y: 0, width: size.width, height: headerH))
-        paint(header, "bg.float")
+        if loadedBackground() == nil { paint(header, "bg.float") }
         var right = size.width - 12
         let icon: CGFloat = 22
         let iconGap: CGFloat = 4
@@ -941,29 +934,22 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         title.autoresizingMask = [.maxXMargin]
         header.addSubview(title)
 
-        let line = NSView(frame: NSRect(x: 0, y: headerH - 1, width: size.width, height: 1))
-        line.wantsLayer = true
-        line.layer?.backgroundColor = color("border.default").cgColor
-        line.autoresizingMask = [.width, .minYMargin]
-        header.addSubview(line)
         header.autoresizingMask = [.width, .maxYMargin]
         header.onDragEnd = { [weak self, weak window] in self?.rememberPanelFrame(window) }
         root.addSubview(header)
 
         let navW = session.store.layout("windows", "navWidth")
         let nav = WindowDragView(frame: NSRect(x: 0, y: headerH, width: navW, height: size.height - headerH - footerH))
-        paint(nav, "bg.float")
+        if loadedBackground() == nil { paint(nav, "bg.float") }
         var ny: CGFloat = 12
         let total = session.library.items.count
         ny = navItem(nav, ny, navW, "all", "全部", total, nil)
 
         let rowH: CGFloat = 36
         let rowGap: CGFloat = 4
-        let buttonH: CGFloat = 34
-        let addY = nav.bounds.height - edge - buttonH
         let groups = session.library.groups.filter { $0.id != "fav" }
         let naturalH = groups.isEmpty ? 0 : CGFloat(groups.count) * (rowH + rowGap) - rowGap
-        let listLimit = max(0, addY - 8 - ny)
+        let listLimit = max(0, nav.bounds.height - edge - ny)
         let list = GroupNavListView(frame: NSRect(x: 0, y: 0, width: navW, height: naturalH))
         list.onReorder = { [weak self] source, target, after in
             self?.session.reorderGroup(source, relativeTo: target, placeAfter: after)
@@ -1005,11 +991,14 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         listScroll.borderType = .noBorder
         listScroll.documentView = list
         nav.addSubview(listScroll)
-
-        let add = softButton("新建分组", #selector(addGroup))
-        add.frame = NSRect(x: edge, y: addY, width: navW - edge * 2, height: buttonH)
-        add.autoresizingMask = [.width, .minYMargin]
-        nav.addSubview(add)
+        nav.onRightClick = { [weak self] event in
+            guard let self else { return }
+            let menu = NSMenu()
+            let item = NSMenuItem(title: "新建分组", action: #selector(self.addGroup), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            NSMenu.popUpContextMenu(menu, with: event, for: nav)
+        }
         nav.autoresizingMask = [.height]
         nav.onDragEnd = { [weak self, weak window] in self?.rememberPanelFrame(window) }
         root.addSubview(nav)
@@ -1083,13 +1072,13 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         row.identifier = NSUserInterfaceItemIdentifier("nav-\(id)")
         row.wantsLayer = true
         row.layer?.cornerRadius = 8
-        row.layer?.backgroundColor = (on ? color("accent.soft") : NSColor.clear).cgColor
+        let selectedFill = color("accent").withAlphaComponent(0.18)
+        let hoverFill = color("accent").withAlphaComponent(0.09)
+        row.layer?.backgroundColor = (on ? selectedFill : NSColor.clear).cgColor
         row.onClick = { [weak self] in
             self?.panelNav = id
             self?.renderGroups()
         }
-        let selectedFill = on ? color("accent.soft") : NSColor.clear
-        let hoverFill = color("accent.soft").withAlphaComponent(0.45)
         row.onHover = { [weak row] inside in
             row?.layer?.backgroundColor = (inside && !on ? hoverFill : selectedFill).cgColor
         }
@@ -1558,19 +1547,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             card.identifier = NSUserInterfaceItemIdentifier("group-\(group.id)")
             card.wantsLayer = true
             card.layer?.backgroundColor = NSColor.clear.cgColor
-            card.layer?.cornerRadius = 10
-            card.layer?.masksToBounds = true
-            card.layer?.borderWidth = 1
-            card.layer?.borderColor = color("border.default").cgColor
-            let effect = NSVisualEffectView(frame: card.bounds)
-            effect.material = prefersDark ? .hudWindow : .popover
-            effect.blendingMode = .withinWindow
-            effect.state = .active
-            card.addSubview(effect)
-            let tint = NSView(frame: card.bounds)
-            tint.wantsLayer = true
-            tint.layer?.backgroundColor = color("bg.float").withAlphaComponent(0.7).cgColor
-            card.addSubview(tint)
 
             let bar = NSView(frame: NSRect(x: inner, y: (headH - 14) / 2, width: 3, height: 14))
             bar.wantsLayer = true
@@ -3293,7 +3269,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         } else {
             backdrop = NSImageView(frame: root.bounds)
             backdrop.identifier = NSUserInterfaceItemIdentifier("deskkit-background")
-            backdrop.imageScaling = .scaleAxesIndependently
+            backdrop.imageScaling = .scaleProportionallyUpOrDown
             backdrop.imageAlignment = .alignCenter
             backdrop.wantsLayer = true
             backdrop.layer?.contentsGravity = .resizeAspectFill

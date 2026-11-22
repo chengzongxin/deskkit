@@ -610,7 +610,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     io.IniFilename = nullptr;
     io.ConfigFlags &= ~ImGuiConfigFlags_ViewportsEnable;
     const float dpiScale = GetDpiForWindow(g_hwnd) / 96.f;
-    dk::LoadUiFont(dpiScale < 1.f ? 1.f : dpiScale);
+    dk::LoadUiFont(dpiScale < 1.f ? 1.f : dpiScale, static_cast<float>(session.store.Layout({"type", "input", "size"})));
     ImGui_ImplWin32_Init(g_hwnd);
     ImGui_ImplDX11_Init(g_device, g_context);
 

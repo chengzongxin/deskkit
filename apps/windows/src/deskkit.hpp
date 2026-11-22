@@ -488,7 +488,7 @@ void BindIconDevice(void* device);
 void SyncPicker(Shell& shell);
 float Px(double dip);
 void ApplyTheme(const Shell& shell);
-bool LoadUiFont(float scale);
+bool LoadUiFont(float scale, float inputDip);
 void PresentHost(void* hwnd, Shell& shell);
 void TickBlur(Shell& shell);
 

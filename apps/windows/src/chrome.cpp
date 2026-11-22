@@ -38,6 +38,8 @@ ID3D11Device* g_device = nullptr;
 std::unordered_map<std::string, ImTextureID> g_icons;
 std::string g_backgroundPath;
 ImTextureID g_background = 0;
+int g_backgroundW = 0;
+int g_backgroundH = 0;
 Shell* g_pick = nullptr;
 HHOOK g_pickMouse = nullptr;
 HHOOK g_pickKey = nullptr;
@@ -220,6 +222,8 @@ ImTextureID BackgroundImage(const Shell& shell) {
     if (path == g_backgroundPath) return g_background;
     g_backgroundPath = path;
     g_background = 0;
+    g_backgroundW = 0;
+    g_backgroundH = 0;
     IWICImagingFactory* factory = nullptr;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return 0;
     IWICBitmapDecoder* decoder = nullptr;
@@ -231,7 +235,11 @@ ImTextureID BackgroundImage(const Shell& shell) {
         converter->GetSize(&width, &height);
         if (width > 0 && height > 0 && width < 8000 && height < 8000) {
             std::vector<uint8_t> pixels(static_cast<size_t>(width) * height * 4);
-            if (SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data()))) g_background = UploadBgra(pixels.data(), static_cast<int>(width), static_cast<int>(height));
+            if (SUCCEEDED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data()))) {
+                g_background = UploadBgra(pixels.data(), static_cast<int>(width), static_cast<int>(height));
+                g_backgroundW = static_cast<int>(width);
+                g_backgroundH = static_cast<int>(height);
+            }
         }
     }
     if (converter) converter->Release();
@@ -473,11 +481,18 @@ bool ResultRow(Shell& shell, const Hit& hit, bool selected, float width, float h
     ImGui::PushID(hit.id.c_str());
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float rowW = width - Px(16);
-    const bool clicked = ImGui::Selectable("##row", selected, 0, ImVec2(rowW, height));
+    // 选中态自己画。Selectable 自带的底是一整块不透明色，盖在背景图上会变成一条深色条。
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
+    const bool clicked = ImGui::Selectable("##row", false, 0, ImVec2(rowW, height));
+    ImGui::PopStyleColor(3);
     ImDrawList* draw = ImGui::GetWindowDrawList();
     if (selected) {
-        draw->AddRectFilled(origin, ImVec2(origin.x + rowW, origin.y + height), PaintU(shell, "bg.selected"), Px(8));
+        draw->AddRectFilled(origin, ImVec2(origin.x + rowW, origin.y + height), PaintU(shell, "accent", 0.16f), Px(8));
         draw->AddRectFilled(ImVec2(origin.x, origin.y + Px(10)), ImVec2(origin.x + Px(3), origin.y + height - Px(10)), PaintU(shell, "accent"), Px(2));
+    } else if (ImGui::IsItemHovered()) {
+        draw->AddRectFilled(origin, ImVec2(origin.x + rowW, origin.y + height), PaintU(shell, "bg.hover", 0.45f), Px(8));
     }
     // 和原来的结果行一样：左边 8，图标列 40，标题 14，副标题 12。
     DrawIcon(shell, hit, ImVec2(origin.x + Px(28), origin.y + height * 0.5f), Px(32));
@@ -873,7 +888,27 @@ void PaintChrome(const Shell& shell) {
     const float alpha = static_cast<float>(std::clamp(shell.session->settings.backgroundOpacity, 0.15, 1.0));
     const char* fill = shell.showSettings || shell.showGuide || shell.showGroups ? "bg.canvas" : "bg.float";
     if (const ImTextureID image = BackgroundImage(shell)) {
-        draw->AddImageRounded(image, origin, end, ImVec2(0, 0), ImVec2(1, 1), IM_COL32(255, 255, 255, static_cast<int>(alpha * 255)), radius);
+        // 按比例铺满，多出来的边裁掉。直接拉到窗口大小会把图拉变形。
+        ImVec2 uv0(0, 0);
+        ImVec2 uv1(1, 1);
+        const float viewW = end.x - origin.x;
+        const float viewH = end.y - origin.y;
+        if (g_backgroundW > 0 && g_backgroundH > 0 && viewW > 1.f && viewH > 1.f) {
+            const float imageAspect = static_cast<float>(g_backgroundW) / static_cast<float>(g_backgroundH);
+            const float viewAspect = viewW / viewH;
+            if (imageAspect > viewAspect) {
+                const float visible = viewAspect / imageAspect;
+                const float crop = (1.f - visible) * 0.5f;
+                uv0.x = crop;
+                uv1.x = 1.f - crop;
+            } else {
+                const float visible = imageAspect / viewAspect;
+                const float crop = (1.f - visible) * 0.5f;
+                uv0.y = crop;
+                uv1.y = 1.f - crop;
+            }
+        }
+        draw->AddImageRounded(image, origin, end, uv0, uv1, IM_COL32(255, 255, 255, static_cast<int>(alpha * 255)), radius);
         draw->AddRectFilled(origin, end, PaintU(shell, fill, 0.55f), radius);
     } else {
         draw->AddRectFilled(origin, end, PaintU(shell, fill, alpha), radius);
@@ -915,7 +950,6 @@ void DrawLauncher(Shell& shell) {
         const ImU32 icon = PaintU(shell, "text.tertiary");
         draw->AddCircle(mark, Px(7), icon, 16, 1.6f);
         draw->AddLine(ImVec2(mark.x + Px(5), mark.y + Px(5)), ImVec2(mark.x + Px(10), mark.y + Px(10)), icon, 1.6f);
-        draw->AddLine(ImVec2(origin.x, origin.y + inputH - 1), ImVec2(origin.x + width, origin.y + inputH - 1), PaintU(shell, "border.default"));
     }
     float left = Px(44);
     if (!session.triggerWord.empty()) {
@@ -1207,8 +1241,9 @@ void DrawGroups(Shell& shell) {
     ImGui::BeginChild("header", ImVec2(0, headerH), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImDrawList* header = ImGui::GetWindowDrawList();
     const ImVec2 headerOrigin = ImGui::GetWindowPos();
-    header->AddRectFilled(headerOrigin, headerOrigin + ImVec2(ImGui::GetWindowWidth(), headerH), PaintU(shell, "bg.float", 0.85f), Px(shell.session->store.Layout({"radius", "float"})), ImDrawFlags_RoundCornersTop);
-    header->AddLine(ImVec2(headerOrigin.x, headerOrigin.y + headerH - 1), ImVec2(headerOrigin.x + ImGui::GetWindowWidth(), headerOrigin.y + headerH - 1), PaintU(shell, "border.default"));
+    if (shell.session->settings.backgroundImagePath.empty()) {
+        header->AddRectFilled(headerOrigin, headerOrigin + ImVec2(ImGui::GetWindowWidth(), headerH), PaintU(shell, "bg.float", 0.85f), Px(shell.session->store.Layout({"radius", "float"})), ImDrawFlags_RoundCornersTop);
+    }
     std::string heading = "全部";
     std::string headingColor;
     if (shell.selectedGroup != "all") {
@@ -1279,9 +1314,10 @@ void DrawGroups(Shell& shell) {
     ImGui::EndChild();
 
     ImGui::BeginChild("nav", ImVec2(navW, 0), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), PaintU(shell, "bg.float", 0.75f));
-    const float newGroupH = Px(34);
-    ImGui::BeginChild("nav-scroll", ImVec2(0, -(newGroupH + Px(16))), false, ImGuiWindowFlags_NoScrollWithMouse);
+    if (shell.session->settings.backgroundImagePath.empty()) {
+        ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetWindowPos(), ImGui::GetWindowPos() + ImGui::GetWindowSize(), PaintU(shell, "bg.float", 0.75f));
+    }
+    ImGui::BeginChild("nav-scroll", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::Dummy(ImVec2(0, Px(8)));
     bool bringNav = false;
     if (shell.renamingGroup.empty() && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup) && ImGui::IsWindowHovered() && ImGui::GetIO().MouseWheel != 0.f) {
@@ -1308,7 +1344,12 @@ void DrawGroups(Shell& shell) {
         const ImVec2 origin = ImGui::GetCursorScreenPos();
         const float height = Px(34);
         const float width = navW - Px(16);
-        if (ImGui::Selectable("##nav", on, 0, ImVec2(width, height))) shell.selectedGroup = id;
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0, 0, 0, 0));
+        if (ImGui::Selectable("##nav", false, 0, ImVec2(width, height))) shell.selectedGroup = id;
+        ImGui::PopStyleColor(3);
+        const bool rowHover = ImGui::IsItemHovered();
         if (color.empty() == false && ImGui::BeginDragDropSource()) {
             ImGui::SetDragDropPayload("dk-group", id, std::strlen(id) + 1);
             ImGui::TextUnformatted(name.c_str());
@@ -1331,8 +1372,11 @@ void DrawGroups(Shell& shell) {
         }
         ImDrawList* draw = ImGui::GetWindowDrawList();
         if (on) {
-            draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), PaintU(shell, "accent.soft"), Px(8));
+            draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), PaintU(shell, "accent", 0.18f), Px(8));
+            draw->AddRectFilled(ImVec2(origin.x + Px(2), origin.y + Px(8)), ImVec2(origin.x + Px(5), origin.y + height - Px(8)), PaintU(shell, "accent"), Px(2));
             if (bringNav) ImGui::SetScrollHereY(0.5f);
+        } else if (rowHover) {
+            draw->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), PaintU(shell, "accent", 0.09f), Px(8));
         }
         float textX = origin.x + Px(10);
         if (!color.empty()) {
@@ -1362,16 +1406,24 @@ void DrawGroups(Shell& shell) {
             const std::string shown = FitText(name, labelW);
             draw->AddText(ImVec2(textX, origin.y + Px(8)), PaintU(shell, on ? "accent.hover" : "text.secondary"), shown.c_str());
         }
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Px(10), Px(8)));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Px(8), Px(2)));
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.f, 0.5f));
         if (std::string(id) != "all" && ImGui::BeginPopupContextItem("nav-menu")) {
             sawMenu = true;
             shell.suppressBlur = true;
-            if (ImGui::MenuItem(session.store.Text("group.rename").c_str())) {
+            const std::string rename = session.store.Text("group.rename");
+            const std::string remove = session.store.Text("group.delete");
+            const float rowH = Px(30);
+            const float rowW = std::max(ImGui::CalcTextSize(rename.c_str()).x, ImGui::CalcTextSize(remove.c_str()).x) + Px(12);
+            if (ImGui::Selectable(rename.c_str(), false, 0, ImVec2(rowW, rowH))) {
                 shell.renamingGroup = id;
                 shell.renameBuffer = name;
             }
-            if (ImGui::MenuItem(session.store.Text("group.delete").c_str())) pendingDeleteGroup = id;
+            if (ImGui::Selectable(remove.c_str(), false, 0, ImVec2(rowW, rowH))) pendingDeleteGroup = id;
             ImGui::EndPopup();
         }
+        ImGui::PopStyleVar(3);
         ImGui::PopID();
     };
     navRow("all", "全部", "");
@@ -1379,12 +1431,21 @@ void DrawGroups(Shell& shell) {
         if (group.id == "fav") continue;
         navRow(group.id.c_str(), group.name, group.color);
     }
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Px(10), Px(8)));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Px(8), Px(2)));
+    ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.f, 0.5f));
+    if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) ImGui::OpenPopup("nav-blank");
+    if (ImGui::BeginPopup("nav-blank")) {
+        sawMenu = true;
+        shell.suppressBlur = true;
+        const char* label = "新建分组";
+        const float rowW = ImGui::CalcTextSize(label).x + Px(12);
+        if (ImGui::Selectable(label, false, 0, ImVec2(rowW, Px(30)))) AddGroup(shell);
+        ImGui::EndPopup();
+    }
+    ImGui::PopStyleVar(3);
     DragGroups(shell, ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered());
     ImGui::EndChild();
-    ImGui::SetCursorPos(ImVec2(Px(8), ImGui::GetCursorPosY() + Px(8)));
-    if (SoftButton(shell, "new-group", "新建分组", false, ImVec2(navW - Px(16), newGroupH))) AddGroup(shell);
-    const ImVec2 navOrigin = ImGui::GetWindowPos();
-    ImGui::GetWindowDrawList()->AddLine(ImVec2(navOrigin.x + navW - 1, navOrigin.y), ImVec2(navOrigin.x + navW - 1, navOrigin.y + ImGui::GetWindowHeight()), PaintU(shell, "border.default"));
     DragGroups(shell, ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered());
     ImGui::EndChild();
     ImGui::SameLine();
@@ -1430,19 +1491,20 @@ void DrawGroups(Shell& shell) {
         const bool plain = shell.selectedGroup != "all";
         const bool folded = !plain && Folded(shell, group.id);
         ImGui::PushID(group.id.c_str());
+        const ImVec2 blockStart = ImGui::GetCursorScreenPos();
         if (!plain) {
             if (ImGui::GetCursorPosY() < Px(4)) ImGui::Dummy(ImVec2(0, Px(8)));
-            BeginCard(shell, "card", "", 0.86f, 8.f, 8.f);
             const float titleTop = ImGui::GetCursorPosY();
+            ImGui::SetCursorPosX(Px(16));
             const ImVec2 bar = ImGui::GetCursorScreenPos();
             ImGui::GetWindowDrawList()->AddRectFilled(bar, ImVec2(bar.x + Px(3), bar.y + ImGui::GetFontSize()), ImGui::ColorConvertFloat4ToU32(Hex(group.color)), Px(2));
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Px(8));
             ImGui::Text("%s", group.name.c_str());
             const float chevron = Px(20);
             const float titleBand = std::max(ImGui::GetTextLineHeight(), chevron);
-            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - Px(8) - chevron, titleTop + (titleBand - chevron) * 0.5f));
+            ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - Px(20) - chevron, titleTop + (titleBand - chevron) * 0.5f));
             if (ChevronButton(shell, "fold", folded)) ToggleFold(shell, group.id);
-            if (!folded) ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, titleTop + titleBand + Px(4)));
+            if (!folded) ImGui::SetCursorPos(ImVec2(Px(16), titleTop + titleBand + Px(4)));
         } else {
             ImGui::SetCursorPos(ImVec2(Px(12), Px(12)));
         }
@@ -1495,27 +1557,88 @@ void DrawGroups(Shell& shell) {
                     ImGui::EndDragDropSource();
                 }
                 // 菜单必须挂在这个格子自己的编号上，而且要在 EndChild 之前打开。所有格子共用一个菜单名时，右键会让界面报错。
+                // 行高固定。「移动到分组」只是一行，鼠标停在上面时，分组列表在它右侧单独打开。
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Px(10), Px(8)));
+                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Px(8), Px(2)));
+                ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.f, 0.5f));
                 if (ImGui::BeginPopupContextItem("menu")) {
                     sawMenu = true;
                     shell.suppressBlur = true;
-                    if (ImGui::BeginMenu(session.store.Text("shortcut.move").c_str())) {
-                        bool any = false;
+                    const std::string moveLabel = session.store.Text("shortcut.move");
+                    const std::string emptyLabel = session.store.Text("shortcut.moveEmpty");
+                    const std::string revealLabel = session.store.Text("shortcut.reveal");
+                    const std::string deleteLabel = session.store.Text("shortcut.delete");
+                    float rowW = Px(148);
+                    rowW = std::max(rowW, ImGui::CalcTextSize(moveLabel.c_str()).x + Px(36));
+                    rowW = std::max(rowW, ImGui::CalcTextSize(revealLabel.c_str()).x + Px(8));
+                    rowW = std::max(rowW, ImGui::CalcTextSize(deleteLabel.c_str()).x + Px(8));
+                    const float rowH = Px(30);
+                    const ImVec2 rowOrigin = ImGui::GetCursorScreenPos();
+                    const ImVec2 mouseNow = ImGui::GetIO().MousePos;
+                    const bool groupsOpen = ImGui::IsPopupOpen("move-groups");
+                    ImGui::Selectable((moveLabel + "##move").c_str(), groupsOpen, 0, ImVec2(rowW, rowH));
+                    const bool rowHover = mouseNow.x >= rowOrigin.x && mouseNow.x <= rowOrigin.x + rowW && mouseNow.y >= rowOrigin.y && mouseNow.y <= rowOrigin.y + rowH;
+                    const float midY = rowOrigin.y + rowH * 0.5f;
+                    const float arrowH = Px(8);
+                    const float arrowW = Px(5);
+                    const float arrowX = rowOrigin.x + rowW - Px(14);
+                    ImGui::GetWindowDrawList()->AddTriangleFilled(ImVec2(arrowX, midY - arrowH * 0.5f), ImVec2(arrowX, midY + arrowH * 0.5f), ImVec2(arrowX + arrowW, midY), ImGui::GetColorU32(ImGuiCol_Text));
+
+                    float subW = Px(108);
+                    int groupCount = 0;
+                    for (const Group& target : session.library.groups) {
+                        if (target.id == groupId || target.id == "fav") continue;
+                        ++groupCount;
+                        subW = std::max(subW, ImGui::CalcTextSize(target.name.c_str()).x + Px(8));
+                    }
+                    if (groupCount == 0) subW = std::max(subW, ImGui::CalcTextSize(emptyLabel.c_str()).x + Px(8));
+                    const ImVec2 menuPos = ImGui::GetWindowPos();
+                    const ImVec2 menuSize = ImGui::GetWindowSize();
+                    const float gap = Px(6);
+                    const float pad = Px(10);
+                    const float subWindowW = subW + pad * 2.f;
+                    const ImVec2 display = ImGui::GetIO().DisplaySize;
+                    const bool flip = menuPos.x + menuSize.x + gap + subWindowW > display.x - Px(8);
+                    ImVec2 subPos(flip ? menuPos.x - gap - subWindowW : menuPos.x + menuSize.x + gap, rowOrigin.y - Px(8));
+                    const float subH = static_cast<float>(std::max(1, groupCount)) * (rowH + Px(2)) + pad * 2.f;
+                    if (subPos.y + subH > display.y - Px(8)) subPos.y = std::max(Px(8), display.y - Px(8) - subH);
+                    if (rowHover && !groupsOpen) ImGui::OpenPopup("move-groups");
+                    ImGui::SetNextWindowPos(subPos, ImGuiCond_Always);
+                    bool moved = false;
+                    if (ImGui::BeginPopup("move-groups", ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize)) {
+                        const ImVec2 mouse = ImGui::GetIO().MousePos;
+                        const ImVec2 subMin = ImGui::GetWindowPos();
+                        const ImVec2 subMax = subMin + ImGui::GetWindowSize();
+                        const float slack = Px(16);
+                        const bool overSub = mouse.x >= subMin.x - slack && mouse.x <= subMax.x + slack && mouse.y >= subMin.y - slack && mouse.y <= subMax.y + slack;
+                        const float gapL = std::min(flip ? subMax.x : menuPos.x + menuSize.x, flip ? menuPos.x : subMin.x);
+                        const float gapR = std::max(flip ? subMax.x : menuPos.x + menuSize.x, flip ? menuPos.x : subMin.x);
+                        const bool inGap = mouse.x >= gapL - slack && mouse.x <= gapR + slack && mouse.y >= std::min(rowOrigin.y, subMin.y) - slack && mouse.y <= std::max(rowOrigin.y + rowH, subMax.y) + slack;
+                        if (!rowHover && !overSub && !inGap) ImGui::CloseCurrentPopup();
+                        if (groupCount == 0) {
+                            ImGui::PushStyleColor(ImGuiCol_Text, Paint(shell, "text.tertiary"));
+                            ImGui::TextUnformatted(emptyLabel.c_str());
+                            ImGui::PopStyleColor();
+                        }
                         for (const Group& target : session.library.groups) {
                             if (target.id == groupId || target.id == "fav") continue;
-                            any = true;
-                            if (ImGui::MenuItem(target.name.c_str())) {
+                            ImGui::PushID(target.id.c_str());
+                            if (ImGui::Selectable(target.name.c_str(), false, 0, ImVec2(subW, rowH))) {
                                 pendingMoveItem = shortcutId;
                                 pendingMoveFrom = groupId;
                                 pendingMoveTo = target.id;
+                                moved = true;
                             }
+                            ImGui::PopID();
                         }
-                        if (!any) ImGui::TextDisabled("%s", session.store.Text("shortcut.moveEmpty").c_str());
-                        ImGui::EndMenu();
+                        ImGui::EndPopup();
                     }
-                    if (shortcutKind != "url" && ImGui::MenuItem(session.store.Text("shortcut.reveal").c_str())) RevealTarget(shortcutPath);
-                    if (ImGui::MenuItem(session.store.Text("shortcut.delete").c_str())) pendingDeleteItem = shortcutId;
+                    if (moved) ImGui::CloseCurrentPopup();
+                    if (shortcutKind != "url" && ImGui::Selectable(revealLabel.c_str(), false, 0, ImVec2(rowW, rowH))) RevealTarget(shortcutPath);
+                    if (ImGui::Selectable(deleteLabel.c_str(), false, 0, ImVec2(rowW, rowH))) pendingDeleteItem = shortcutId;
                     ImGui::EndPopup();
                 }
+                ImGui::PopStyleVar(3);
                 ImDrawList* draw = ImGui::GetWindowDrawList();
                 if (ImGui::IsItemHovered() && !pressOnBadge) draw->AddRectFilled(origin, ImVec2(origin.x + cell, origin.y + cell), PaintU(shell, "bg.hover"), Px(8));
                 const ImVec2 iconMin(origin.x + cell * 0.5f - Px(16), origin.y + Px(8));
@@ -1565,8 +1688,12 @@ void DrawGroups(Shell& shell) {
                 ImGui::EndChild();
             }
         }
-        const ImVec2 cardMin = ImGui::GetWindowPos();
-        const ImVec2 cardMax = cardMin + ImGui::GetWindowSize();
+        ImVec2 cardMin = blockStart;
+        ImVec2 cardMax(ImGui::GetWindowPos().x + ImGui::GetWindowWidth(), ImGui::GetCursorScreenPos().y);
+        if (plain) {
+            cardMin = ImGui::GetWindowPos();
+            cardMax = cardMin + ImGui::GetWindowSize();
+        }
         shell.groupHits.push_back(GroupHit{group.id, cardMin.x, cardMin.y, cardMax.x - cardMin.x, cardMax.y - cardMin.y});
         const ImVec2 point = shell.externalDrop ? ImVec2(shell.dropX, shell.dropY) : ImGui::GetMousePos();
         const bool inside = point.x >= cardMin.x && point.x < cardMax.x && point.y >= cardMin.y && point.y < cardMax.y;
@@ -1587,10 +1714,7 @@ void DrawGroups(Shell& shell) {
                 }
             }
         }
-        if (!plain) {
-            EndCard();
-            ImGui::Dummy(ImVec2(0, Px(8)));
-        }
+        if (!plain) ImGui::Dummy(ImVec2(0, Px(8)));
         ImGui::PopID();
     }
     if (!focusEmpty && !anyCard && !shell.groupFilter.empty()) {
@@ -2004,7 +2128,7 @@ void DrawSettings(Shell& shell) {
         EndCard();
     } else {
         BeginCard(shell, "version", "");
-        BeginRow("DeskKit 0.9.5", "Windows 版是 C++ / ImGui 便携包，解压后双击即可打开窗口。");
+        BeginRow("DeskKit 0.9.6", "Windows 版是 C++ / ImGui 便携包，解压后双击即可打开窗口。");
         ImGui::Text("当前版本");
         EndCard();
         std::string diffs;
@@ -2017,7 +2141,7 @@ void DrawSettings(Shell& shell) {
         ImGui::Text("来自契约");
         EndCard();
         BeginCard(shell, "notes", "更新日志");
-        BeginRow("0.9.5", "第一次启动扫描开始菜单时，遇到无效目录会跳过，不再直接退出。");
+        BeginRow("0.9.6", "快捷启动和搜索浮层去掉深色底和分隔线，背景图按原比例铺开。");
         ImGui::Text("当前版本");
         EndCard();
         BeginCard(shell, "permissions", "Windows 系统能力");
@@ -2039,7 +2163,7 @@ void DrawSettings(Shell& shell) {
         ImGui::SameLine();
         if (SoftButton(shell, "export-about", "导出")) ExportData(shell);
         BeginRow("检查更新", session.settings.autoUpdate ? "已开启启动检查。现在可以手动查一次" : "自动检查已关闭，仍可手动查看版本");
-        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.5，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.5。", L"检查更新", MB_OK);
+        if (SoftButton(shell, "check-update", "检查更新")) MessageBoxW(nullptr, session.settings.autoUpdate ? L"当前已是 DeskKit 0.9.6，没有新版本。" : L"自动检查已关闭。当前版本仍是 DeskKit 0.9.6。", L"检查更新", MB_OK);
         BeginRow("重新走引导", "三步引导可以再看一遍");
         if (SoftButton(shell, "reguide", "重新引导")) {
             session.settings.guideDone = false;

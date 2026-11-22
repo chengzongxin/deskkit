@@ -47,7 +47,7 @@ int main() {
     Expect(store.Hash() == dk::ContractStore::HashTree(store.Root()), "哈希稳定");
     Expect(store.GroupColors().size() > 3 && store.GroupColors()[3] == "#9B6CF6", "分组第 4 色");
     Expect(store.Layout({"launcher", "width"}) == 800, "启动器宽度");
-    Expect(store.Layout({"launcher", "inputRowHeight"}) == 64, "输入行高度");
+    Expect(store.Layout({"launcher", "inputRowHeight"}) == 48, "输入行高度");
 
     const json esc = json::parse(store.FixtureText("esc.json"));
     for (const auto& sequence : esc.at("sequences")) {

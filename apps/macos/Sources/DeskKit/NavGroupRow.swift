@@ -177,11 +177,11 @@ final class NavGroupRow: HitRow {
 
     private func refreshChrome() {
         if dropActive {
-            layer?.backgroundColor = (selected ? accentSoft : NSColor.clear.withAlphaComponent(0.08)).cgColor
+            layer?.backgroundColor = accent.withAlphaComponent(0.28).cgColor
         } else if selected {
-            layer?.backgroundColor = accentSoft.cgColor
+            layer?.backgroundColor = accent.withAlphaComponent(0.18).cgColor
         } else if hovered {
-            layer?.backgroundColor = accentSoft.withAlphaComponent(0.45).cgColor
+            layer?.backgroundColor = accent.withAlphaComponent(0.09).cgColor
         } else {
             layer?.backgroundColor = NSColor.clear.cgColor
         }

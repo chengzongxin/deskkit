@@ -74,8 +74,13 @@ class FlippedView: NSView {
 /// 顶栏、底栏和侧栏空白处按住可以拖动窗口。禁止 `mouseDownCanMoveWindow`，否则子视图里的拖拽排序会被当成挪窗口。
 final class WindowDragView: FlippedView {
     var onDragEnd: (() -> Void)?
+    var onRightClick: ((NSEvent) -> Void)?
 
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClick?(event)
+    }
 
     override func mouseDown(with event: NSEvent) {
         let local = convert(event.locationInWindow, from: nil)

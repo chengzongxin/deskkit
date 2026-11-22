@@ -9,7 +9,7 @@ final class FixtureTests: XCTestCase {
         XCTAssertEqual(store.hash, try ContractStore.hashTree(store.root))
         XCTAssertEqual("#9B6CF6", store.groupColors[3])
         XCTAssertEqual(800, store.layout("launcher", "width"))
-        XCTAssertEqual(64, store.layout("launcher", "inputRowHeight"))
+        XCTAssertEqual(48, store.layout("launcher", "inputRowHeight"))
     }
 
     func testEscapeChains() throws {

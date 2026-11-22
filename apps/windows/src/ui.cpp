@@ -64,7 +64,7 @@ void ApplyTheme(const Shell& shell) {
     style.PopupBorderSize = 1.f;
 }
 
-bool LoadUiFont(float scale) {
+bool LoadUiFont(float scale, float inputDip) {
     g_scale = scale < 1.f ? 1.f : scale;
     ImGuiIO& io = ImGui::GetIO();
     // msyh.ttc 第 0 面是微软雅黑，第 1 面是微软雅黑 UI，和原来 WPF 的 FontFamily 一致。
@@ -87,7 +87,7 @@ bool LoadUiFont(float scale) {
         }
         if (!body) continue;
         g_smallFont = add(14.f, face);
-        g_inputFont = add(20.f, face);
+        g_inputFont = add(inputDip > 1.f ? inputDip : 16.f, face);
         if (!g_inputFont) g_inputFont = body;
         static const ImWchar icons[] = {0xE700, 0xF8FF, 0};
         if (GetFileAttributesA("C:\\Windows\\Fonts\\segmdl2.ttf") != INVALID_FILE_ATTRIBUTES) {
