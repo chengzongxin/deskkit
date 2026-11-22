@@ -74,12 +74,13 @@ if ($Zip) {
     if (Test-Path $VersionFile) {
         try {
             $meta = Get-Content $VersionFile -Raw | ConvertFrom-Json
-            if ($meta.version) { $version = $meta.version }
+            if ($meta.version) { $version = [string]$meta.version }
         } catch {
             Write-Warning "无法解析 version.json，使用默认版本号 $version"
         }
     }
-    $zip = Join-Path $dist "DeskKit-$version-win-x64-portable.zip"
+    $zipName = "DeskKit-$version-x64-portable.zip"
+    $zip = Join-Path $dist $zipName
     if (Test-Path $zip) { Remove-Item $zip -Force }
     Write-Host "打包 $zip ..."
     Compress-Archive -Path (Join-Path $Publish "*") -DestinationPath $zip -CompressionLevel Optimal
