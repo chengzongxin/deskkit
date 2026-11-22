@@ -2004,7 +2004,7 @@ void DrawSettings(Shell& shell) {
         EndCard();
     } else {
         BeginCard(shell, "version", "");
-        BeginRow("DeskKit 0.9.0", "Windows 版已按原来的界面和功能补齐。");
+        BeginRow("DeskKit 0.9.3", "Windows 版是 C++ / ImGui 便携包，解压即可运行。");
         ImGui::Text("当前版本");
         EndCard();
         std::string diffs;
@@ -2017,7 +2017,7 @@ void DrawSettings(Shell& shell) {
         ImGui::Text("来自契约");
         EndCard();
         BeginCard(shell, "notes", "更新日志");
-        BeginRow("0.9.0", "全局呼出、拼音搜索、内置工具、分组快捷启动、三页设置");
+        BeginRow("0.9.3", "Windows 程序改为 C++ / ImGui。便携包带上拼音表和契约，解压即可运行。");
         ImGui::Text("当前版本");
         EndCard();
         BeginCard(shell, "permissions", "Windows 系统能力");

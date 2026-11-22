@@ -72,6 +72,8 @@ if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 Copy-Item $exe $stage
 Copy-Item (Join-Path $Build "assets") (Join-Path $stage "assets") -Recurse
+# 解压后的目录里要有 contracts，否则程序找不到契约，直接退出。
+Copy-Item (Join-Path $Root "contracts") (Join-Path $stage "contracts") -Recurse
 
 if ($SyncLocal) {
     $dest = Join-Path $env:LOCALAPPDATA "DeskKit\app"
@@ -88,7 +90,7 @@ if ($SyncLocal) {
 if ($Zip) {
     $dist = Join-Path $Root "release\dist"
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
-    $version = "0.9.2-win"
+    $version = "0.9.3-win"
     if (Test-Path $VersionFile) {
         try {
             $meta = Get-Content $VersionFile -Raw | ConvertFrom-Json
@@ -98,9 +100,9 @@ if ($Zip) {
         }
     }
     $zipName = "DeskKit-$version-x64-portable.zip"
-    $zip = Join-Path $dist $zipName
-    if (Test-Path $zip) { Remove-Item $zip -Force }
-    Write-Host "打包 $zip ..."
-    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -CompressionLevel Optimal
-    Write-Host "zip 大小: $([math]::Round((Get-Item $zip).Length / 1MB, 2)) MB"
+    $zipPath = Join-Path $dist $zipName
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    Write-Host "打包 $zipPath ..."
+    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zipPath -CompressionLevel Optimal
+    Write-Host "zip 大小: $([math]::Round((Get-Item $zipPath).Length / 1MB, 2)) MB"
 }
