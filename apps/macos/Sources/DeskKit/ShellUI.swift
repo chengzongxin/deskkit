@@ -71,6 +71,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     private var renamingGroupId: String?
     private var renamingCommit = false
     private var panelSearch = ""
+    private var panelSearchOpen = false
+    private var panelSearchFocus = false
     private var foldedGroups: Set<String> = []
     private var recordingHotkey: String?
     var onHotkeyChanged: () -> Void = {}
@@ -376,7 +378,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         bodyScroll.clipsToBounds = true
         bodyScroll.contentView.clipsToBounds = true
         bodyScroll.documentView = body
-        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: 264)
+        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 72))
         launcherRoot.addSubview(bodyScroll)
         launcherRoot.clipsToBounds = true
 
@@ -403,6 +405,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             self.onAskHotkeyAccess()
         }
         footerBar.addSubview(footHit)
+        footerBar.isHidden = true
         layoutLauncherChrome()
     }
 
@@ -452,7 +455,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let minH: CGFloat = home
             ? session.store.layout("launcher", "defaultHeight")
             : (empty ? session.store.layout("launcher", "emptyHeight") : 220)
-        let height = min(session.store.layout("launcher", "maxHeight"), max(minH, 64 + contentH + 40))
+        let height = min(session.store.layout("launcher", "maxHeight"), max(minH, 64 + contentH + 8))
 
         var frame = launcher.frame
         let top = frame.maxY
@@ -461,7 +464,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         launcher.setFrame(frame, display: true)
         launcherRoot.frame = NSRect(x: 0, y: 0, width: width, height: height)
         body.frame = NSRect(x: 0, y: 0, width: width, height: max(contentH, 1))
-        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 96))
+        bodyScroll.frame = NSRect(x: 0, y: 64, width: width, height: max(1, height - 72))
         bodyScroll.scrollerInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 10)
         let viewport = bodyScroll.frame.height
         let scrollKey = session.query + "|" + session.triggerWord
@@ -472,7 +475,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 Log.info("列表可滚动，内容 \(Int(contentH))，可视 \(Int(viewport))")
             }
         }
-        footerBar.frame = NSRect(x: 0, y: height - 32, width: width, height: 32)
+        footerBar.isHidden = true
         if let divider = launcherRoot.subviews.first(where: { $0.identifier?.rawValue == "chrome-divider" }) {
             divider.frame = NSRect(x: 0, y: 63, width: width, height: 1)
             divider.layer?.backgroundColor = color("border.default").cgColor
@@ -533,17 +536,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 number += 1
             }
         }
-
-        y = section(y + 4, "推荐工具", "")
-        y = drawChips(y, [
-            ("▤ 剪贴板历史", #selector(chipClipboard)),
-            ("= 计算器", #selector(chipCalc)),
-            ("译 翻译", #selector(chipTranslate))
-        ])
-
-        y = section(y + 4, "试试这些输入（拼音 / 首字母 / 算式 / 触发词）", "")
-        let demos = ["wx", "kzmb", "word", "fy hello", "123*4", "#3B6CF6", "100cny to usd", "color #3B6CF6"]
-        y = drawDemoChips(y, demos)
         return y + 8
     }
 
@@ -738,7 +730,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             right.alignment = .right
         body.addSubview(right)
         }
-        return y + 26
+        return y + 32
     }
 
     private func drawRow(_ y: CGFloat, _ hit: Hit, _ index: Int, _ selected: Bool, showEnter: Bool) -> CGFloat {
@@ -873,62 +865,61 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         card(root)
 
         let headerH: CGFloat = 48
-        let footerH: CGFloat = 36
+        let footerH: CGFloat = 0
         let edge = uiEdge()
-        let gap: CGFloat = 8
-        let controlH: CGFloat = 28
-        let controlY = (headerH - controlH) / 2
         let header = WindowDragView(frame: NSRect(x: 0, y: 0, width: size.width, height: headerH))
         paint(header, "bg.float")
-        var right = size.width - edge
-        let close = symbolButton("xmark", #selector(closeGroups))
-        right -= controlH
-        close.frame = NSRect(x: right, y: controlY, width: controlH, height: controlH)
-        close.autoresizingMask = [.minXMargin]
-        header.addSubview(close)
-        let gear = symbolButton("gearshape", #selector(showSettingsFromLauncher))
-        right -= gap + controlH
-        gear.frame = NSRect(x: right, y: controlY, width: controlH, height: controlH)
-        gear.autoresizingMask = [.minXMargin]
-        header.addSubview(gear)
-        let searchW: CGFloat = 168
-        right -= gap + searchW
-        let search = NSTextField(frame: NSRect(x: right, y: controlY, width: searchW, height: controlH))
-        search.cell = CenteredFieldCell(textCell: "")
-        (search.cell as? CenteredFieldCell)?.textInset = 12
-        search.placeholderString = "搜索快捷项"
-        search.stringValue = panelSearch
-        search.font = UI.font(12)
-        search.textColor = color("text.primary")
-        search.isBordered = false
-        search.isBezeled = false
-        search.drawsBackground = true
-        search.backgroundColor = color("bg.input")
-        search.target = self
-        search.action = #selector(panelSearchChanged(_:))
-        search.cell?.sendsActionOnEndEditing = false
-        search.focusRingType = .none
-        search.wantsLayer = true
-        search.layer?.cornerRadius = 8
-        search.layer?.masksToBounds = true
-        search.layer?.borderWidth = 1
-        search.layer?.borderColor = color("border.strong").cgColor
-        search.autoresizingMask = [.minXMargin]
-        header.addSubview(search)
-        let edit = panelEdit
-            ? primaryButton("✓ 完成", #selector(togglePanelEdit))
-            : softButton("✎ 编辑", #selector(togglePanelEdit))
-        right -= gap + 76
-        edit.frame = NSRect(x: right, y: controlY, width: 76, height: controlH)
-        edit.autoresizingMask = [.minXMargin]
-        header.addSubview(edit)
-        let addTop = primaryButton(session.store.text("empty.panelAction"), #selector(addShortcut))
-        right -= gap + 76
-        addTop.frame = NSRect(x: right, y: controlY, width: 76, height: controlH)
-        addTop.autoresizingMask = [.minXMargin]
-        header.addSubview(addTop)
+        var right = size.width - 12
+        let icon: CGFloat = 22
+        let iconGap: CGFloat = 4
+        let iconY = (headerH - icon) / 2
+        let placeIcon: (NSView) -> Void = { button in
+            right -= icon
+            button.frame = NSRect(x: right, y: iconY, width: icon, height: icon)
+            button.autoresizingMask = [.minXMargin]
+            header.addSubview(button)
+            right -= iconGap
+        }
+        let close = quietSymbol("xmark", #selector(closeGroups), tip: "关闭")
+        placeIcon(close)
+        let gear = quietSymbol("gearshape", #selector(showSettingsFromLauncher), tip: "设置")
+        placeIcon(gear)
+        let showSearch = panelSearchOpen || !panelSearch.isEmpty
+        let searchButton = quietSymbol("magnifyingglass", #selector(openPanelSearch), tip: "搜索", active: showSearch)
+        placeIcon(searchButton)
+        if showSearch {
+            let searchW: CGFloat = 140
+            right -= searchW
+            let search = NSTextField(frame: NSRect(x: right, y: iconY, width: searchW, height: icon))
+            search.identifier = NSUserInterfaceItemIdentifier("panel-search")
+            search.cell = CenteredFieldCell(textCell: "")
+            (search.cell as? CenteredFieldCell)?.textInset = 8
+            search.placeholderString = "搜索"
+            search.stringValue = panelSearch
+            search.font = UI.font(12)
+            search.textColor = color("text.secondary")
+            search.isBordered = false
+            search.isBezeled = false
+            search.drawsBackground = true
+            search.backgroundColor = color("bg.subtle")
+            search.delegate = self
+            search.target = self
+            search.action = #selector(panelSearchChanged(_:))
+            search.cell?.sendsActionOnEndEditing = false
+            search.focusRingType = .none
+            search.wantsLayer = true
+            search.layer?.cornerRadius = 8
+            search.layer?.masksToBounds = true
+            search.autoresizingMask = [.minXMargin]
+            header.addSubview(search)
+            right -= iconGap
+        }
+        let edit = quietSymbol(panelEdit ? "checkmark" : "pencil", #selector(togglePanelEdit), tip: panelEdit ? "完成" : "编辑", active: panelEdit)
+        placeIcon(edit)
+        let addTop = quietSymbol("plus", #selector(addShortcut), tip: "添加")
+        placeIcon(addTop)
         let ctx = panelNavContext()
-        let contentMax = addTop.frame.minX - gap
+        let contentMax = right
         var cx = edge
         let brand = UI.plain("DeskKit", 13, .semibold, color("text.tertiary"))
         brand.frame = NSRect(x: cx, y: 0, width: 56, height: headerH)
@@ -943,17 +934,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             header.addSubview(bar)
             cx += 11
         }
-        let countText = " · \(ctx.count) 项"
-        let countW = PlainLabel.width(for: countText, font: UI.font(12)) + 6
-        let titleW = max(48, contentMax - cx - countW)
+        let titleW = max(48, contentMax - cx)
         let title = UI.plain(ctx.title, 16, .semibold, color("text.primary"))
         title.truncates = true
         title.frame = NSRect(x: cx, y: 0, width: titleW, height: headerH)
         title.autoresizingMask = [.maxXMargin]
         header.addSubview(title)
-        let meta = UI.plain(countText, 12, .regular, color("text.tertiary"))
-        meta.frame = NSRect(x: title.frame.maxX, y: 0, width: countW, height: headerH)
-        header.addSubview(meta)
 
         let line = NSView(frame: NSRect(x: 0, y: headerH - 1, width: size.width, height: 1))
         line.wantsLayer = true
@@ -967,11 +953,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let navW = session.store.layout("windows", "navWidth")
         let nav = WindowDragView(frame: NSRect(x: 0, y: headerH, width: navW, height: size.height - headerH - footerH))
         paint(nav, "bg.float")
-        var ny: CGFloat = 16
-        let head = UI.plain("分组", 11, .semibold, color("text.tertiary"))
-        head.frame = NSRect(x: edge, y: ny, width: navW - edge * 2, height: 16)
-        nav.addSubview(head)
-        ny += 28
+        var ny: CGFloat = 12
         let total = session.library.items.count
         ny = navItem(nav, ny, navW, "all", "全部", total, nil)
 
@@ -1059,25 +1041,6 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
         applyBackground(to: root)
 
-        let foot = WindowDragView(frame: NSRect(x: 0, y: size.height - footerH, width: size.width, height: footerH))
-        paint(foot, "bg.float")
-        let chord = hotkeyText("panel")
-        let footerText = session.store.text("panel.footer", ["hotkey": chord, "count": "\(total)"])
-        let tip = UI.plain(footerText, 12, .regular, color("text.tertiary"))
-        tip.truncates = true
-        let tipW = size.width - navW - edge * 2
-        tip.frame = NSRect(x: navW + edge, y: 0, width: max(80, tipW), height: footerH)
-        tip.autoresizingMask = [.width]
-        foot.addSubview(tip)
-        let footLine = NSView(frame: NSRect(x: 0, y: 0, width: size.width, height: 1))
-        footLine.wantsLayer = true
-        footLine.layer?.backgroundColor = color("border.default").cgColor
-        footLine.autoresizingMask = [.width]
-        foot.addSubview(footLine)
-        foot.autoresizingMask = [.width, .minYMargin]
-        foot.onDragEnd = { [weak self, weak window] in self?.rememberPanelFrame(window) }
-        root.addSubview(foot)
-
         drop.onResizeEnd = { [weak self, weak window] in
             self?.rememberPanelFrame(window)
             self?.renderGroups()
@@ -1092,6 +1055,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         if let id = renamingGroupId {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let field = self.groupsWindow?.contentView?.find(id: "rename-\(id)") as? NSTextField else { return }
+                self.groupsWindow?.makeFirstResponder(field)
+            }
+        } else if panelSearchFocus {
+            panelSearchFocus = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let field = self.groupsWindow?.contentView?.find(id: "panel-search") as? NSTextField else { return }
                 self.groupsWindow?.makeFirstResponder(field)
             }
         }
@@ -1127,11 +1096,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let labelX: CGFloat = 8
         let label = UI.plain(title, 13, on ? .semibold : .regular, on ? color("accent.hover") : color("text.secondary"))
         label.truncates = true
-        label.frame = NSRect(x: labelX, y: 0, width: row.bounds.width - labelX - 44, height: rowH)
+        label.frame = NSRect(x: labelX, y: 0, width: row.bounds.width - labelX - 8, height: rowH)
         row.addSubview(label)
-        let c = UI.plain("\(count)", 11, .regular, color("text.tertiary"), .right)
-        c.frame = NSRect(x: row.bounds.width - 40, y: 0, width: 28, height: rowH)
-        row.addSubview(c)
         nav.addSubview(row)
         return y + rowH + 4
     }
@@ -1578,10 +1544,16 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             let cell: CGFloat = 80
             let cellGap: CGFloat = 8
             let cardW = contentW - outer * 2
-            let cols = max(1, Int((cardW - inner * 2 + cellGap) / (cell + cellGap)))
+            let content = cardW - inner * 2
+            var cols = max(1, Int((content + cellGap) / (cell + cellGap)))
+            var gap = cellGap
+            if cols > 1 {
+                let extra = content - (CGFloat(cols) * cell + CGFloat(cols - 1) * cellGap)
+                if extra > 1 { gap = cellGap + extra / CGFloat(cols - 1) }
+            }
             let rows = Int(ceil(Double(max(items.count + (panelEdit ? 1 : 0), 1)) / Double(cols)))
-            let headH: CGFloat = 48
-            let cardH: CGFloat = folded ? headH : (items.isEmpty ? 176 : headH + 8 + CGFloat(rows) * cell + CGFloat(max(rows - 1, 0)) * cellGap + inner)
+            let headH: CGFloat = 36
+            let cardH: CGFloat = folded ? headH : (items.isEmpty ? 160 : headH + 4 + CGFloat(rows) * cell + CGFloat(max(rows - 1, 0)) * gap + inner)
             let card = FlippedView(frame: NSRect(x: outer, y: y, width: cardW, height: cardH))
             card.identifier = NSUserInterfaceItemIdentifier("group-\(group.id)")
             card.wantsLayer = true
@@ -1605,7 +1577,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             bar.layer?.backgroundColor = Theme.paint(group.color).cgColor
             bar.layer?.cornerRadius = 2
             card.addSubview(bar)
-            let btn: CGFloat = 28
+            let btn: CGFloat = 22
             let btnY = (headH - btn) / 2
             var nameLimit = card.bounds.width - inner
             let fold = symbolButton(folded ? "chevron.right" : "chevron.down", #selector(toggleFold(_:)), point: 12)
@@ -1613,17 +1585,12 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             fold.frame = NSRect(x: card.bounds.width - inner - btn, y: btnY, width: btn, height: btn)
             card.addSubview(fold)
             nameLimit = fold.frame.minX - 12
-            let countText = "\(items.count) 项"
-            let countW = PlainLabel.width(for: countText, font: UI.font(11)) + 4
             let nameX: CGFloat = inner + 3 + 10
-            let nameW = min(PlainLabel.width(for: group.name, font: UI.font(13, .semibold)), max(40, nameLimit - nameX - countW - 8))
+            let nameW = min(PlainLabel.width(for: group.name, font: UI.font(13, .semibold)), max(40, nameLimit - nameX))
             let name = UI.plain(group.name, 13, .semibold, color("text.primary"))
             name.truncates = true
             name.frame = NSRect(x: nameX, y: 0, width: nameW, height: headH)
             card.addSubview(name)
-            let count = UI.plain(countText, 11, .regular, color("text.tertiary"))
-            count.frame = NSRect(x: name.frame.maxX + 8, y: 0, width: countW, height: headH)
-            card.addSubview(count)
 
             if folded {
                 canvas.addSubview(card)
@@ -1637,7 +1604,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 card.addSubview(empty)
             } else {
                 var cx: CGFloat = inner
-                var cy: CGFloat = headH + 4
+                var cy: CGFloat = headH + 2
                 for (index, item) in items.enumerated() {
                     let cellView = HitRow(frame: NSRect(x: cx, y: cy, width: cell, height: cell))
                     cellView.wantsLayer = true
@@ -1670,10 +1637,10 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                     bindShortcutCell(cellView, item: item, sourceGroup: group.id)
                     if panelEdit { wobble(cellView, index: index) }
                     card.addSubview(cellView)
-                    cx += cell + cellGap
+                    cx += cell + gap
                     if cx + cell > card.bounds.width - inner {
                         cx = inner
-                        cy += cell + cellGap
+                        cy += cell + gap
                     }
                 }
                 if panelEdit {
@@ -2030,16 +1997,13 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         header.addSubview(close)
         root.addSubview(header)
 
-        let navW = session.store.layout("windows", "navWidth")
+        let navW = session.store.layout("windows", "settings", "navWidth")
         let nav = FlippedView(frame: NSRect(x: 0, y: 48, width: navW, height: size.height - 48 - 36))
         paint(nav, "bg.float")
-        let navHead = UI.label("设置", 11, .semibold, color("text.tertiary"))
-        navHead.frame = NSRect(x: 16, y: 14, width: 160, height: 16)
-        nav.addSubview(navHead)
         let tabs = [("general", "常规"), ("hotkeys", "快捷键"), ("about", "关于与双端信息")]
         for (index, tab) in tabs.enumerated() {
             let on = settingsTab == tab.0
-            let row = HitRow(frame: NSRect(x: 8, y: 40 + CGFloat(index) * 40, width: navW - 16, height: 34))
+            let row = HitRow(frame: NSRect(x: 8, y: 12 + CGFloat(index) * 40, width: navW - 16, height: 34))
             row.wantsLayer = true
             row.layer?.cornerRadius = 8
             row.layer?.backgroundColor = (on ? color("accent.soft") : NSColor.clear).cgColor
@@ -2409,6 +2373,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     // MARK: - Input / Keys
 
     func controlTextDidChange(_ obj: Notification) {
+        if let text = obj.object as? NSTextField, text.identifier?.rawValue == "panel-search" { return }
         let typed = field.stringValue
         if session.triggerWord.isEmpty, let parsed = triggerSplit(typed) {
             session.query = parsed.0 + " " + parsed.1
@@ -2734,6 +2699,25 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
             NSPasteboard.general.setString(text, forType: .string)
             Log.info("已复制工具结果")
         }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let text = obj.object as? NSTextField, text.identifier?.rawValue == "panel-search" else { return }
+        panelSearch = text.stringValue
+        if panelSearch.isEmpty {
+            panelSearchOpen = false
+            renderGroups()
+        }
+    }
+
+    @objc private func openPanelSearch() {
+        if panelSearchOpen, panelSearch.isEmpty {
+            panelSearchOpen = false
+        } else {
+            panelSearchOpen = true
+            panelSearchFocus = true
+        }
+        renderGroups()
+    }
 
     @objc private func togglePanelEdit() {
         panelEdit.toggle()
@@ -3936,6 +3920,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         button.isBordered = false
         button.font = UI.font(13, .medium)
         button.contentTintColor = color("text.secondary")
+        return button
+    }
+
+    private func quietSymbol(_ name: String, _ action: Selector, tip: String, active: Bool = false) -> NSButton {
+        let tint = color(active ? "accent" : "text.tertiary")
+        let button = symbolButton(name, action, point: 13)
+        button.image = AppIcons.symbol(name, size: 13, tint: tint)
+        button.contentTintColor = tint
+        button.toolTip = tip
         return button
     }
 

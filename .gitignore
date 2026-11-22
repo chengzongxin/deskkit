@@ -17,6 +17,10 @@ xcuserdata/
 # macOS 打包产物
 apps/macos/build/
 
+# Windows 原生构建产物。Dear ImGui 的示例不参与编译。
+apps/windows-native/build/
+apps/windows-native/third_party/imgui/examples/
+
 # IDE
 .vs/
 .idea/

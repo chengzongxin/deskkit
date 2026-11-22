@@ -9,11 +9,11 @@
 
 ## 0. 结论
 
-Windows 用 **C# / .NET 8 + WPF**。macOS 用 **Swift + AppKit**。两端各写各的界面和业务代码，靠同一份 `contracts/` 和同一套测试夹具对齐。不设共享 Rust 核心，不上 WebView，不做插件运行时。
+Windows 用 **C++20 + Dear ImGui + DirectX 11**（`apps/windows-native`，和 Maye Nano 同一类原生绘制，不嵌浏览器）。macOS 用 **Swift + AppKit**。两端各写各的界面和业务代码，靠同一份 `contracts/` 和同一套测试夹具对齐。不设共享 Rust 核心，不上 WebView，不做插件运行时。原先的 C# / .NET 8 / WPF 工程留在 `apps/windows`，只作对照。
 
 | 项 | 现行决定 |
 |---|---|
-| Windows | C#，.NET 8，WPF。系统调用用 CsWin32。W0 首发 |
+| Windows | C++20，Dear ImGui，DirectX 11。系统调用直接用 Win32。W0 首发 |
 | macOS | Swift + AppKit。主界面不用 SwiftUI，不用 WKWebView。最晚 W8 |
 | 共享物 | `contracts/` 里的 JSON：数据结构、键盘、色值、尺寸、状态机、文案、权限说明 |
 | 对齐方式 | 同一份夹具输入，两端各自实现，输出归一化后逐字段比对 |
@@ -52,7 +52,8 @@ Windows 用 **C# / .NET 8 + WPF**。macOS 用 **Swift + AppKit**。两端各写�
 | 2026-11-06 | 初版：Tauri v2，开放插件，双端同一天发布 | 作废 |
 | 2026-11-16 | 产品收窄：取消第三方插件；Windows 先行；数据 schema、快捷键语义、视觉规范、设置项结构仍然随时对齐 | **有效**，见 06 |
 | 2026-11-16 | 曾选「共享 Rust Core + Windows Win32 自绘 + macOS AppKit」，并用 80MB 否决 WPF | **Windows 半段作废**。macOS 的 Swift + AppKit 保留 |
-| 2026-11-16 | 用户要求 Windows 使用主流方案 | **有效**。Windows = C# / .NET 8 + WPF |
+| 2026-11-16 | 用户要求 Windows 使用主流方案 | 已被 2026-11-22 覆盖。当时 Windows = C# / .NET 8 + WPF |
+| 2026-11-22 | 用户要求 Windows 改用 Maye Nano 的方案，功能原样迁移 | **有效**。Windows = C++20 / Dear ImGui / DirectX 11 |
 | 2026-11-16 | macOS 按该品类主流实现 | **有效**。Swift + AppKit |
 
 80MB 曾经是选型门槛，用来否决 Electron、Flutter、Tauri 和 WPF。用户改选 Windows 主流方案之后，这条门槛不再用来挑选 Windows 技术栈。WPF 进程要常驻 CLR，内存会高于原生自绘。发布时记录实测 RSS，不把某个内存数字写成拒发条件。
@@ -216,6 +217,8 @@ deskkit/
 
 ## 5. Windows
 
+能运行的 Windows 程序在 `apps/windows-native`。用 CMake 生成，入口是 `deskkit.exe`。绘制是 Dear ImGui + DirectX 11。下面这张表是改语言之前的 C# 工程，代码还在 `apps/windows`，用来对照行为，不再是启动入口。
+
 ### 5.1 工程
 
 | 项目 | 目标框架 | 职责 |
@@ -265,7 +268,7 @@ DPI 使用 Per-Monitor V2。多屏默认跟随鼠标所在屏幕，浮层离屏�
 
 分发先做便携目录和 winget。签名用 Authenticode，放在发布闸门里，不阻塞第一版能跑起来。
 
-明确不引用：WebView2、WinUI 3、Electron、Rust、C++ 主程序。
+明确不引用：WebView2、WinUI 3、Electron、Rust。Windows 主程序就是 C++ / Dear ImGui / DirectX 11。
 
 ---
 

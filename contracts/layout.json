@@ -31,9 +31,9 @@
   },
   "windows": {
     "panel": { "width": 960, "height": 640 },
-    "settings": { "width": 1000, "height": 680 },
+    "settings": { "width": 1000, "height": 680, "navWidth": 200 },
     "guide": { "width": 760, "height": 520 },
-    "navWidth": 200,
+    "navWidth": 148,
     "headerHeight": 48,
     "panelFooterHeight": 36,
     "settingsFooterHeight": 32

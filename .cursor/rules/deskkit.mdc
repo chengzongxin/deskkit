@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 技术栈
 
-- Windows：C# / .NET 8 / WPF。系统调用用 CsWin32。
+- Windows：C++20 / Dear ImGui / DirectX 11，工程在 `apps/windows-native`。系统调用直接用 Win32。原来的 C# / WPF 工程留在 `apps/windows`，只作对照。
 - macOS：Swift + AppKit。主界面不用 SwiftUI，不用 WKWebView。
 - 两端各写业务代码。对齐靠 `contracts/` 和同一套夹具，不设共享 Rust 核心。
 - 不做插件、不做 WebView、不引入 Tauri、Electron、WinUI 3、Flutter。
