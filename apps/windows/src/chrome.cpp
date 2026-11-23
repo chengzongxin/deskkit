@@ -1363,6 +1363,10 @@ void DrawGroups(Shell& shell) {
     std::string pendingMoveItem;
     std::string pendingMoveFrom;
     std::string pendingMoveTo;
+    std::string pendingReorderItem;
+    std::string pendingReorderGroup;
+    std::string pendingReorderAnchor;
+    bool pendingReorderAfter = false;
     bool sawMenu = false;
     const float headerH = Px(session.store.Layout({"windows", "headerHeight"}));
     const float navW = Px(session.store.Layout({"windows", "navWidth"}));
@@ -1690,6 +1694,52 @@ void DrawGroups(Shell& shell) {
                     ImGui::TextUnformatted(shortcutTitle.c_str());
                     ImGui::EndDragDropSource();
                 }
+                if (ImGui::BeginDragDropTarget()) {
+                    const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+                    bool sameGroup = false;
+                    if (peek && peek->IsDataType("dk-item") && peek->Data) {
+                        const std::string data(static_cast<const char*>(peek->Data));
+                        const auto split = data.find('\n');
+                        sameGroup = split != std::string::npos && data.substr(split + 1) == groupId && data.substr(0, split) != shortcutId;
+                    }
+                    if (sameGroup) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("dk-item")) {
+                            const std::string data(static_cast<const char*>(payload->Data));
+                            const auto split = data.find('\n');
+                            if (split != std::string::npos) {
+                                pendingReorderItem = data.substr(0, split);
+                                pendingReorderGroup = groupId;
+                                pendingReorderAnchor = shortcutId;
+                                pendingReorderAfter = ImGui::GetMousePos().x >= origin.x + cell * 0.5f;
+                            }
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                if (const ImGuiPayload* dragging = ImGui::GetDragDropPayload(); dragging && dragging->IsDataType("dk-item")) {
+                    const std::string data(static_cast<const char*>(dragging->Data));
+                    const auto split = data.find('\n');
+                    const ImVec2 mouse = ImGui::GetIO().MousePos;
+                    const bool over = mouse.x >= origin.x && mouse.x < origin.x + cell && mouse.y >= origin.y && mouse.y < origin.y + cell;
+                    if (split != std::string::npos && over) {
+                        const std::string fromId = data.substr(0, split);
+                        const std::string fromGroup = data.substr(split + 1);
+                        if (fromGroup == groupId && fromId != shortcutId) {
+                            ImDrawList* mark = ImGui::GetWindowDrawList();
+                            const bool after = mouse.x >= origin.x + cell * 0.5f;
+                            const float barW = Px(3);
+                            const float x = after ? origin.x + cell - barW : origin.x;
+                            mark->AddRectFilled(ImVec2(x, origin.y + Px(8)), ImVec2(x + barW, origin.y + cell - Px(8)), PaintU(shell, "accent"), Px(2));
+                            const std::string caption = session.store.Text(after ? "shortcut.dropAfter" : "shortcut.dropBefore");
+                            const ImVec2 captionSize = ImGui::CalcTextSize(caption.c_str());
+                            const ImVec2 box(mouse.x + Px(16), mouse.y + Px(18));
+                            const ImVec2 pad(Px(8), Px(4));
+                            mark->AddRectFilled(box, box + captionSize + pad * 2.f, PaintU(shell, "bg.float"), Px(8));
+                            mark->AddRect(box, box + captionSize + pad * 2.f, PaintU(shell, "accent"), Px(8));
+                            mark->AddText(box + pad, PaintU(shell, "text.primary"), caption.c_str());
+                        }
+                    }
+                }
                 // 菜单必须挂在这个格子自己的编号上，而且要在 EndChild 之前打开。所有格子共用一个菜单名时，右键会让界面报错。
                 // 行高固定。「移动到分组」只是一行，鼠标停在上面时，分组列表在它右侧单独打开。
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Px(10), Px(8)));
@@ -1843,11 +1893,12 @@ void DrawGroups(Shell& shell) {
             shell.hoverGroup = group.id;
             if (!plain) {
                 if (const ImGuiPayload* payload = ImGui::GetDragDropPayload(); payload && payload->IsDataType("dk-item")) {
-                    ImGui::GetWindowDrawList()->AddRect(cardMin, cardMax, PaintU(shell, "accent"), Px(10), 0, 2.f);
-                    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-                        const std::string data(static_cast<const char*>(payload->Data));
-                        const auto split = data.find('\n');
-                        if (split != std::string::npos && data.substr(split + 1) != group.id) {
+                    const std::string data(static_cast<const char*>(payload->Data));
+                    const auto split = data.find('\n');
+                    const bool otherGroup = split != std::string::npos && data.substr(split + 1) != group.id;
+                    if (otherGroup) {
+                        ImGui::GetWindowDrawList()->AddRect(cardMin, cardMax, PaintU(shell, "accent"), Px(10), 0, 2.f);
+                        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
                             pendingMoveItem = data.substr(0, split);
                             pendingMoveFrom = data.substr(split + 1);
                             pendingMoveTo = group.id;
@@ -1888,7 +1939,8 @@ void DrawGroups(Shell& shell) {
     }
     if (!shell.externalDrop && shell.confirmDeleteId.empty()) shell.suppressBlur = sawMenu;
     try {
-        if (!pendingMoveItem.empty()) session.MoveShortcut(pendingMoveItem, pendingMoveFrom, pendingMoveTo);
+        if (!pendingReorderItem.empty()) session.ReorderShortcut(pendingReorderItem, pendingReorderGroup, pendingReorderAnchor, pendingReorderAfter);
+        else if (!pendingMoveItem.empty()) session.MoveShortcut(pendingMoveItem, pendingMoveFrom, pendingMoveTo);
         else if (!pendingDeleteItem.empty()) session.RemoveShortcut(pendingDeleteItem);
     } catch (const std::exception& ex) {
         LogWarn(std::string("快捷启动操作失败 ") + ex.what());

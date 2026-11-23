@@ -423,6 +423,7 @@ class HitRow: NSView {
     override func mouseExited(with event: NSEvent) { onHover?(false) }
     override func mouseDown(with event: NSEvent) {
         guard let onLongPress, let window else { return }
+        let start = event.locationInWindow
         let deadline = Date().addingTimeInterval(0.25)
         while Date() < deadline {
             let remaining = deadline.timeIntervalSinceNow
@@ -432,6 +433,14 @@ class HitRow: NSView {
             }
             if next.type == .leftMouseUp {
                 onClick()
+                return
+            }
+            // 挪过一小段就进入拖动。点一下仍然打开，不必先长按，也不必先进编辑。
+            let dx = next.locationInWindow.x - start.x
+            let dy = next.locationInWindow.y - start.y
+            if dx * dx + dy * dy >= 25 {
+                suppressClick = true
+                onLongPress(next)
                 return
             }
         }

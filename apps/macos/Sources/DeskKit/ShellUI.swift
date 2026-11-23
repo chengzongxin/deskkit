@@ -30,6 +30,15 @@ final class HitBox: NSObject {
     init(_ hit: Hit) { self.hit = hit }
 }
 
+/// 拖动时画在格子边上的插入线。自己不接鼠标，避免挡住下面的格子。
+private final class ClickThroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private final class ClickThroughField: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelegate {
     let session: Session
 
@@ -1272,13 +1281,15 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         while true {
             guard let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) else { break }
             if next.type == .leftMouseUp { break }
-            if panelEdit, let hit = shortcutCell(at: next.locationInWindow), hit.group == sourceGroup, hit.item != itemId {
+            if let hit = shortcutCell(at: next.locationInWindow), hit.group == sourceGroup, hit.item != itemId {
                 moveTarget = nil
                 reorder = (hit.item, hit.after)
                 showShortcutHover(nil)
+                showInsertMark(hit.view, after: hit.after)
                 showDragCaption(session.store.text(hit.after ? "shortcut.dropAfter" : "shortcut.dropBefore"), at: next.locationInWindow)
             } else {
                 reorder = nil
+                showInsertMark(nil, after: false)
                 let hover = shortcutGroup(at: next.locationInWindow)
                 moveTarget = hover == sourceGroup ? nil : hover
                 showShortcutHover(moveTarget)
@@ -1293,6 +1304,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         cell.alphaValue = 1
         cell.layer?.transform = CATransform3DIdentity
         showShortcutHover(nil)
+        showInsertMark(nil, after: false)
         showDragCaption(nil, at: .zero)
         if let reorder {
             session.reorderShortcut(itemId, in: sourceGroup, before: reorder.id, placeAfter: reorder.after)
@@ -1304,7 +1316,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         renderGroups()
     }
 
-    private func shortcutCell(at windowPoint: NSPoint) -> (group: String, item: String, after: Bool)? {
+    private func shortcutCell(at windowPoint: NSPoint) -> (group: String, item: String, after: Bool, view: NSView)? {
         guard let root = groupsWindow?.contentView else { return nil }
         var view = root.hitTest(windowPoint)
         while let current = view {
@@ -1312,7 +1324,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
                 let parts = raw.split(separator: "|", maxSplits: 2).map(String.init)
                 if parts.count == 3 {
                     let local = current.convert(windowPoint, from: nil)
-                    return (parts[1], parts[2], local.y > current.bounds.midY)
+                    // 图标是横着排的。指针在格子右半边，就插到它后面；左半边插到前面。
+                    return (parts[1], parts[2], local.x > current.bounds.midX, current)
                 }
             }
             view = current.superview
@@ -1320,10 +1333,32 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         return nil
     }
 
+    private func showInsertMark(_ cell: NSView?, after: Bool) {
+        guard let root = groupsWindow?.contentView else { return }
+        let mark = root.find(id: "shortcut-insert") ?? {
+            let view = ClickThroughView(frame: .zero)
+            view.identifier = NSUserInterfaceItemIdentifier("shortcut-insert")
+            view.wantsLayer = true
+            view.layer?.backgroundColor = color("accent").cgColor
+            view.layer?.cornerRadius = 1.5
+            root.addSubview(view)
+            return view
+        }()
+        guard let cell else {
+            mark.isHidden = true
+            return
+        }
+        let frame = root.convert(cell.bounds, from: cell)
+        let width: CGFloat = 3
+        mark.frame = NSRect(x: after ? frame.maxX - width : frame.minX, y: frame.minY + 8, width: width, height: max(12, frame.height - 16))
+        mark.isHidden = false
+        root.addSubview(mark)
+    }
+
     private func showDragCaption(_ text: String?, at windowPoint: NSPoint) {
         guard let root = groupsWindow?.contentView else { return }
         let label = (root.find(id: "drag-caption") as? NSTextField) ?? {
-            let field = NSTextField(labelWithString: "")
+            let field = ClickThroughField(labelWithString: "")
             field.identifier = NSUserInterfaceItemIdentifier("drag-caption")
             field.font = UI.font(12, .semibold)
             field.textColor = color("text.primary")
@@ -1423,7 +1458,7 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
     }
 
     /// 契约数字和 Windows 一样：格子 80、图标 40、文字 12，对应 960 宽的面板。
-    /// 窗口被拉宽时按同样比例放大，避免一行挤进十几个小图标。
+    /// 窗口拉宽时只略放大，最多 1.5 倍，避免小图标和铺满屏幕的大图标两个极端。
     private func shortcutTile(contentWidth: CGFloat) -> (cell: CGFloat, icon: CGFloat, label: CGFloat, gap: CGFloat, space: CGFloat) {
         let cell = session.store.layout("cell", "shortcut")
         let icon = session.store.layout("cell", "icon")
@@ -1434,7 +1469,8 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         let baseIcon = icon > 0 ? icon : 40
         let baseLabel = label > 0 ? label : 12
         let design = max(480, (panel > 0 ? panel : 960) - (nav > 0 ? nav : 148))
-        let scale = min(3, max(1, contentWidth / design))
+        let ratio = max(1, contentWidth / design)
+        let scale = min(1.5, 1 + (ratio - 1) * 0.4)
         return (baseCell * scale, baseIcon * scale, baseLabel * scale, 4 * scale, 8 * scale)
     }
 
