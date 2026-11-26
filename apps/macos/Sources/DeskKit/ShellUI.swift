@@ -2511,9 +2511,21 @@ final class Shell: NSObject, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelega
         }
     }
 
+    /// 只有指针在左侧分组栏时，滚轮才换组。右侧列表要自己滚动。
+    private func wheelIsOverGroupNav(_ event: NSEvent) -> Bool {
+        guard let content = groupsWindow?.contentView else { return false }
+        let point = content.convert(event.locationInWindow, from: nil)
+        let navW = session.store.layout("windows", "navWidth")
+        let headerH = session.store.layout("windows", "headerHeight")
+        let width = navW > 0 ? navW : 148
+        let header = headerH > 0 ? headerH : 48
+        return point.x >= 0 && point.x < width && point.y >= header && point.y <= content.bounds.height
+    }
+
     /// 滚轮向下换下一组，向上换上一组。和方向键是同一条路径。
     private func handleGroupWheel(_ event: NSEvent) -> Bool {
         guard event.window === groupsWindow, renamingGroupId == nil else { return false }
+        guard wheelIsOverGroupNav(event) else { return false }
         if !event.momentumPhase.isEmpty {
             return true
         }
